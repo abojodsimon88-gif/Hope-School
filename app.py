@@ -1,9 +1,9 @@
 from flask import Flask, render_template_string, request, redirect, url_for, session, flash
 
 app = Flask(__name__)
-app.secret_key = 'simon_hope_school_2026_pro_max'
+app.secret_key = 'simon_hope_school_2026_ultimate'
 
-# قاعدة بيانات المستخدمين (الباسورد الافتراضي للكل '000' وقابل للتغيير)
+# 1. كل المستخدمين الباسورد تبعهم '000' افتراضياً (مدير، سكرتيرة، وكل المعلمين)
 users_db = {
     'admin': {'password': '000', 'role': 'admin', 'name': 'المدير خضر'},
     'berta': {'password': '000', 'role': 'secretary', 'name': 'السكرتيرة بيرتا'},
@@ -13,7 +13,7 @@ users_db = {
     'sohaila': {'password': '000', 'role': 'teacher', 'name': 'المس سهيلة'}
 }
 
-# جدول الحصص الأسبوعي الكامل لكل معلم
+# جدول الحصص الأسبوعي الشامل (يشمل مايك وسهيلة وكل الأساتذة)
 teachers_schedule = {
     'الأستاذ أحمد': {
         'السبت': 'رياضيات - أولى ثانوي', 'الأحد': 'فيزياء', 'الإثنين': 'فراغ', 'الثلاثاء': 'رياضيات', 'الأربعاء': 'فراغ', 'الخميس': 'رياضيات'
@@ -51,7 +51,7 @@ def login():
             flash('اسم المستخدم أو كلمة المرور خطأ!', 'danger')
     return render_template_string(LOGIN_HTML)
 
-# --- لوحة المدير الشاملة (إرسال تعاميم + مراقبة جداول السكرتيرة + إدارة المعلمين) ---
+# --- لوحة المدير العامة ---
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_dashboard():
     if 'username' not in session or session['role'] != 'admin':
@@ -72,9 +72,16 @@ def admin_dashboard():
             flash('تم نشر التعميم وإرساله بنجاح مع جرس التنبيه!', 'success')
             
     teachers_list = [u['name'] for u in users_db.values() if u['role'] == 'teacher']
-    return render_template_string(ADMIN_HTML, teachers=teachers_list, teachers_schedule=teachers_schedule, announcements=system_announcements, name=session['name'])
+    return render_template_string(ADMIN_HTML, teachers=teachers_list, announcements=system_announcements, name=session['name'])
 
-# --- لوحة السكرتيرة (تعديل الجداول) ---
+# --- صفحة المدير الخاصة لمتابعة جداول بيرتا (الزر الجديد) ---
+@app.route('/admin/secretary_schedule_view')
+def admin_view_secretary_schedules():
+    if 'username' not in session or session['role'] != 'admin':
+        return redirect(url_for('login'))
+    return render_template_string(ADMIN_SECRETARY_VIEW_HTML, schedule=teachers_schedule, name=session['name'])
+
+# --- لوحة السكرتيرة (تعديل الجداول لجميع الأساتذة بما فيهم مايك وسهيلة) ---
 @app.route('/secretary', methods=['GET', 'POST'])
 def secretary_dashboard():
     if 'username' not in session or session['role'] not in ['admin', 'secretary']:
@@ -93,7 +100,7 @@ def secretary_dashboard():
         teachers_schedule[selected_teacher] = {
             'السبت': sat, 'الأحد': sun, 'الإثنين': mon, 'الثلاثاء': tue, 'الأربعاء': wed, 'الخميس': thu
         }
-        flash(f'تم حفظ جدول المعلم: {selected_teacher} بنجاح!', 'success')
+        flash(f'تم حفظ وتحديث جدول المعلم: {selected_teacher} بنجاح!', 'success')
 
     teachers_list = [u['name'] for u in users_db.values() if u['role'] == 'teacher']
     return render_template_string(SECRETARY_HTML, teachers=teachers_list, schedule=teachers_schedule, name=session['name'])
@@ -113,7 +120,7 @@ def teacher_dashboard():
     
     return render_template_string(TEACHER_HTML, schedule=my_sched, announcements=my_announcements, name=teacher_name)
 
-# --- تغيير كلمة المرور ---
+# --- تغيير كلمة المرور لأي مستخدم ---
 @app.route('/change_password', methods=['GET', 'POST'])
 def change_password():
     if 'username' not in session:
@@ -123,7 +130,7 @@ def change_password():
         new_pass = request.form.get('new_password')
         if new_pass:
             users_db[session['username']]['password'] = new_pass
-            flash('تم تغيير كلمة السر بنجاح! يمكنك استخدامها في تسجيل الدخول القادم.', 'success')
+            flash('تم تغيير كلمة السر بنجاح!', 'success')
             
     return render_template_string(CHANGE_PASS_HTML)
 
@@ -145,8 +152,9 @@ COMMON_STYLE = '''
     .alert { padding: 12px; margin: 15px 0; border-radius: 6px; font-size: 14px; }
     .alert-danger { background-color: #f8d7da; color: #721c24; }
     .alert-success { background-color: #d4edda; color: #155724; }
-    .nav { margin-bottom: 20px; display: flex; gap: 10px; }
+    .nav { margin-bottom: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
     .nav a { background: #6c757d; color: white; padding: 8px 15px; text-decoration: none; border-radius: 6px; font-size: 14px; }
+    .nav a.btn-special { background: #28a745; }
     .card { background: #fdfdfd; border: 1px solid #e1e8ed; padding: 15px; border-radius: 8px; margin-bottom: 12px; }
     .creds-box { background: #eef2f7; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #333; line-height: 1.6; }
 </style>
@@ -156,11 +164,9 @@ LOGIN_HTML = COMMON_STYLE + '''
 <div class="container">
     <h2>تسجيل الدخول - مدرسة الأمل</h2>
     <div class="creds-box">
-        <strong>💡 أسماء الدخول (كلمة السر الافتتاحية للكل هي <code>000</code>):</strong><br>
-        - المدير (خضر): <code>admin</code><br>
-        - السكرتيرة (بيرتا): <code>berta</code><br>
-        - الأستاذ أحمد: <code>ahmad</code> | الأستاذ نزار: <code>nizar</code><br>
-        - الأستاذ مايك: <code>mike</code> | المس سهيلة: <code>sohaila</code><br>
+        <strong>💡 بيانات الدخول (كلمة السر الافتتاحية للكل هي <code>000</code>):</strong><br>
+        - المدير: <code>admin</code> | السكرتيرة: <code>berta</code><br>
+        - الأساتذة: <code>ahmad</code>, <code>nizar</code>, <code>mike</code>, <code>sohaila</code><br>
         <em>* ملاحظة: يرجى الدخول بكلمة السر <code>000</code> ثم تغييرها من داخل الحساب.</em>
     </div>
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -205,6 +211,7 @@ CHANGE_PASS_HTML = COMMON_STYLE + '''
 ADMIN_HTML = COMMON_STYLE + '''
 <div class="container">
     <div class="nav">
+        <a href="/admin/secretary_schedule_view" class="btn-special">📂 متابعة جداول السكرتيرة بيرتا</a>
         <a href="/change_password">تغيير كلمة السر</a>
         <a href="/logout">تسجيل خروج</a>
     </div>
@@ -237,20 +244,6 @@ ADMIN_HTML = COMMON_STYLE + '''
         <button type="submit" style="background-color: #d9534f;">إرسال التعميم مع جرس التنبيه</button>
     </form>
     
-    <hr style="margin: 30px 0;">
-    
-    <h3>👀 متابعة جداول المعلمين (التي أنشأتها السكرتيرة):</h3>
-    {% for t_name, days in teachers_schedule.items() %}
-        <div class="card">
-            <strong style="color: #0275d8; font-size: 16px;">{{ t_name }}</strong>
-            <ul style="margin: 8px 0 0 0; padding-right: 20px; font-size: 14px;">
-                {% for day, val in days.items() %}
-                    <li><b>{{ day }}:</b> {{ val if val else 'لا توجد حصص' }}</li>
-                {% endfor %}
-            </ul>
-        </div>
-    {% endfor %}
-    
     <h3>📜 التعاميم السابقة المرسلة:</h3>
     {% for ann in announcements %}
         <div class="card">
@@ -263,13 +256,36 @@ ADMIN_HTML = COMMON_STYLE + '''
 </div>
 '''
 
+ADMIN_SECRETARY_VIEW_HTML = COMMON_STYLE + '''
+<div class="container">
+    <div class="nav">
+        <a href="/admin">رجوع للوحة المدير</a>
+        <a href="/logout">تسجيل خروج</a>
+    </div>
+    <h2>متابعة جداول المعلمين (إعداد السكرتيرة بيرتا)</h2>
+    <p style="color: #666; font-size: 14px;">هنا يمكنك الاطلاع الكامل على كافة الجداول التي أنشأتها السكرتيرة لكل معلم ومعلمة:</p>
+    <hr>
+    
+    {% for t_name, days in schedule.items() %}
+        <div class="card">
+            <strong style="color: #0275d8; font-size: 16px;">👨‍🏫 {{ t_name }}</strong>
+            <ul style="margin: 8px 0 0 0; padding-right: 20px; font-size: 14px; line-height: 1.6;">
+                {% for day, val in days.items() %}
+                    <li><b>{{ day }}:</b> {{ val if val else 'لا توجد حصص' }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endfor %}
+</div>
+'''
+
 SECRETARY_HTML = COMMON_STYLE + '''
 <div class="container">
     <div class="nav">
         <a href="/change_password">تغيير كلمة السر</a>
         <a href="/logout">تسجيل خروج</a>
     </div>
-    <h2>لوحة السكرتيرة (تعديل الجداول الأسبوعية)</h2>
+    <h2>لوحة السكرتيرة بيرتا (تعديل الجداول الأسبوعية)</h2>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -278,9 +294,9 @@ SECRETARY_HTML = COMMON_STYLE + '''
       {% endif %}
     {% endwith %}
     <form method="POST">
-        <label>اختر المعلم:</label>
+        <label>اختر المعلم (شامل مايك وسهيلة وباقي الطاقم):</label>
         <select name="teacher_name" required>
-            <option value="">-- اختر المعلم لتعديل جدوله --</option>
+            <option value="">-- اختر المعلم --</option>
             {% for t in teachers %}
                 <option value="{{ t }}">{{ t }}</option>
             {% endfor %}
