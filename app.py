@@ -1,19 +1,19 @@
 from flask import Flask, render_template_string, request, redirect, url_for, session, flash
 
 app = Flask(__name__)
-app.secret_key = 'simon_hope_school_2026_pro'
+app.secret_key = 'simon_hope_school_2026_pro_max'
 
-# قاعدة بيانات المستخدمين (شاملة الإدارة، السكرتيرة، والمعلمين الجدد والقدامى)
+# قاعدة بيانات المستخدمين (الباسورد الافتراضي للكل '000' وقابل للتغيير)
 users_db = {
-    'admin': {'password': '123', 'role': 'admin', 'name': 'المدير خضر'},
-    'berta': {'password': '123', 'role': 'secretary', 'name': 'السكرتيرة بيرتا'},
-    'ahmad': {'password': '123', 'role': 'teacher', 'name': 'الأستاذ أحمد'},
-    'nizar': {'password': '333', 'role': 'teacher', 'name': 'الأستاذ نزار'},
-    'mike': {'password': '123', 'role': 'teacher', 'name': 'الأستاذ مايك'},
-    'sohaila': {'password': '123', 'role': 'teacher', 'name': 'المس سهيلة'}
+    'admin': {'password': '000', 'role': 'admin', 'name': 'المدير خضر'},
+    'berta': {'password': '000', 'role': 'secretary', 'name': 'السكرتيرة بيرتا'},
+    'ahmad': {'password': '000', 'role': 'teacher', 'name': 'الأستاذ أحمد'},
+    'nizar': {'password': '000', 'role': 'teacher', 'name': 'الأستاذ نزار'},
+    'mike': {'password': '000', 'role': 'teacher', 'name': 'الأستاذ مايك'},
+    'sohaila': {'password': '000', 'role': 'teacher', 'name': 'المس سهيلة'}
 }
 
-# جدول الحصص الشامل لكل معلم (مرتب لكل أيام الأسبوع)
+# جدول الحصص الأسبوعي الكامل لكل معلم
 teachers_schedule = {
     'الأستاذ أحمد': {
         'السبت': 'رياضيات - أولى ثانوي', 'الأحد': 'فيزياء', 'الإثنين': 'فراغ', 'الثلاثاء': 'رياضيات', 'الأربعاء': 'فراغ', 'الخميس': 'رياضيات'
@@ -29,10 +29,8 @@ teachers_schedule = {
     }
 }
 
-# نظام الإشعارات والاجتماعات المتقدم (يحتوي على النص، المرسل إليهم، ورقم التعريف)
 system_announcements = []
 
-# --- 1. صفحة تسجيل الدخول ---
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -53,7 +51,7 @@ def login():
             flash('اسم المستخدم أو كلمة المرور خطأ!', 'danger')
     return render_template_string(LOGIN_HTML)
 
-# --- 2. لوحة المدير المتقدمة (إرسال تعاميم واختيار المعلمين) ---
+# --- لوحة المدير الشاملة (إرسال تعاميم + مراقبة جداول السكرتيرة + إدارة المعلمين) ---
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_dashboard():
     if 'username' not in session or session['role'] != 'admin':
@@ -66,18 +64,17 @@ def admin_dashboard():
         
         if title and message:
             announcement_data = {
-                'id': len(system_announcements) + 1,
                 'title': title,
                 'message': message,
                 'target': target_teacher
             }
             system_announcements.append(announcement_data)
-            flash('تم نشر الاجتماع/التعميم بنجاح وإرساله للمعلمين المعنيين مع جرس التنبيه!', 'success')
+            flash('تم نشر التعميم وإرساله بنجاح مع جرس التنبيه!', 'success')
             
     teachers_list = [u['name'] for u in users_db.values() if u['role'] == 'teacher']
-    return render_template_string(ADMIN_HTML, teachers=teachers_list, announcements=system_announcements, name=session['name'])
+    return render_template_string(ADMIN_HTML, teachers=teachers_list, teachers_schedule=teachers_schedule, announcements=system_announcements, name=session['name'])
 
-# --- 3. لوحة السكرتيرة (تعديل الجدول الكامل لكل أيام الأسبوع دفعة واحدة) ---
+# --- لوحة السكرتيرة (تعديل الجداول) ---
 @app.route('/secretary', methods=['GET', 'POST'])
 def secretary_dashboard():
     if 'username' not in session or session['role'] not in ['admin', 'secretary']:
@@ -96,12 +93,12 @@ def secretary_dashboard():
         teachers_schedule[selected_teacher] = {
             'السبت': sat, 'الأحد': sun, 'الإثنين': mon, 'الثلاثاء': tue, 'الأربعاء': wed, 'الخميس': thu
         }
-        flash(f'تم حفظ وتحديث الجدول الأسبوعي الكامل للمعلم: {selected_teacher} بنجاح!', 'success')
+        flash(f'تم حفظ جدول المعلم: {selected_teacher} بنجاح!', 'success')
 
     teachers_list = [u['name'] for u in users_db.values() if u['role'] == 'teacher']
     return render_template_string(SECRETARY_HTML, teachers=teachers_list, schedule=teachers_schedule, name=session['name'])
 
-# --- 4. لوحة المعلم (مع جرس التنبيه الصوتي عند وجود تعميم جديد) ---
+# --- لوحة المعلم ---
 @app.route('/teacher')
 def teacher_dashboard():
     if 'username' not in session or session['role'] != 'teacher':
@@ -109,8 +106,6 @@ def teacher_dashboard():
     
     teacher_name = session['name']
     my_sched = teachers_schedule.get(teacher_name, {})
-    
-    # تصفية التعاميم الموجهة لهذا المعلم خصيصاً أو للكل
     my_announcements = [
         ann for ann in system_announcements 
         if ann['target'] == 'الكل' or ann['target'] == teacher_name
@@ -118,7 +113,7 @@ def teacher_dashboard():
     
     return render_template_string(TEACHER_HTML, schedule=my_sched, announcements=my_announcements, name=teacher_name)
 
-# --- 5. تغيير كلمة المرور لأي مستخدم ---
+# --- تغيير كلمة المرور ---
 @app.route('/change_password', methods=['GET', 'POST'])
 def change_password():
     if 'username' not in session:
@@ -128,7 +123,7 @@ def change_password():
         new_pass = request.form.get('new_password')
         if new_pass:
             users_db[session['username']]['password'] = new_pass
-            flash('تم تغيير كلمة السر بنجاح!', 'success')
+            flash('تم تغيير كلمة السر بنجاح! يمكنك استخدامها في تسجيل الدخول القادم.', 'success')
             
     return render_template_string(CHANGE_PASS_HTML)
 
@@ -137,13 +132,13 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# ================= Templates & Design (التصميم الحديث وجرس الصوت) =================
+# ================= Templates & Design =================
 
 COMMON_STYLE = '''
 <style>
     body { font-family: Tahoma, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; direction: rtl; text-align: right; }
-    .container { max-width: 650px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0px 4px 15px rgba(0,0,0,0.08); }
-    h2 { color: #2c3e50; }
+    .container { max-width: 700px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0px 4px 15px rgba(0,0,0,0.08); }
+    h2, h3 { color: #2c3e50; }
     input, select, textarea { width: 100%; padding: 12px; margin: 8px 0 15px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
     button { background-color: #0275d8; color: white; padding: 12px; border: none; border-radius: 6px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; }
     button:hover { background-color: #025aa5; }
@@ -153,12 +148,21 @@ COMMON_STYLE = '''
     .nav { margin-bottom: 20px; display: flex; gap: 10px; }
     .nav a { background: #6c757d; color: white; padding: 8px 15px; text-decoration: none; border-radius: 6px; font-size: 14px; }
     .card { background: #fdfdfd; border: 1px solid #e1e8ed; padding: 15px; border-radius: 8px; margin-bottom: 12px; }
+    .creds-box { background: #eef2f7; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px; color: #333; line-height: 1.6; }
 </style>
 '''
 
 LOGIN_HTML = COMMON_STYLE + '''
 <div class="container">
     <h2>تسجيل الدخول - مدرسة الأمل</h2>
+    <div class="creds-box">
+        <strong>💡 أسماء الدخول (كلمة السر الافتتاحية للكل هي <code>000</code>):</strong><br>
+        - المدير (خضر): <code>admin</code><br>
+        - السكرتيرة (بيرتا): <code>berta</code><br>
+        - الأستاذ أحمد: <code>ahmad</code> | الأستاذ نزار: <code>nizar</code><br>
+        - الأستاذ مايك: <code>mike</code> | المس سهيلة: <code>sohaila</code><br>
+        <em>* ملاحظة: يرجى الدخول بكلمة السر <code>000</code> ثم تغييرها من داخل الحساب.</em>
+    </div>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -168,9 +172,9 @@ LOGIN_HTML = COMMON_STYLE + '''
     {% endwith %}
     <form method="POST">
         <label>اسم المستخدم:</label>
-        <input type="text" name="username" placeholder="admin, berta, ahmad, mike, sohaila..." required>
+        <input type="text" name="username" placeholder="اكتب اسم المستخدم هنا..." required>
         <label>كلمة المرور:</label>
-        <input type="password" name="password" required>
+        <input type="password" name="password" placeholder="اكتب 000" required>
         <button type="submit">دخول النظام</button>
     </form>
 </div>
@@ -192,8 +196,8 @@ CHANGE_PASS_HTML = COMMON_STYLE + '''
     {% endwith %}
     <form method="POST">
         <label>كلمة المرور الجديدة:</label>
-        <input type="password" name="new_password" required>
-        <button type="submit">حفظ التغيير</button>
+        <input type="password" name="new_password" placeholder="اكتب كلمة السر الجديدة..." required>
+        <button type="submit">حفظ كلمة السر الجديدة</button>
     </form>
 </div>
 '''
@@ -206,7 +210,8 @@ ADMIN_HTML = COMMON_STYLE + '''
     </div>
     <h2>لوحة تحكم المدير العام: {{ name }}</h2>
     <hr>
-    <h3>إرسال اجتماع أو تعميم رسمي:</h3>
+    
+    <h3>📢 إرسال اجتماع أو تعميم رسمي:</h3>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -227,19 +232,33 @@ ADMIN_HTML = COMMON_STYLE + '''
         </select>
         
         <label>التفاصيل والمحتوى:</label>
-        <textarea name="message" rows="4" placeholder="اكتب تفاصيل الاجتماع أو التعميم هنا..." required></textarea>
+        <textarea name="message" rows="3" placeholder="اكتب تفاصيل الاجتماع أو التعميم هنا..." required></textarea>
         
         <button type="submit" style="background-color: #d9534f;">إرسال التعميم مع جرس التنبيه</button>
     </form>
     
-    <h3>التعاميم والاجتماعات السابقة:</h3>
+    <hr style="margin: 30px 0;">
+    
+    <h3>👀 متابعة جداول المعلمين (التي أنشأتها السكرتيرة):</h3>
+    {% for t_name, days in teachers_schedule.items() %}
+        <div class="card">
+            <strong style="color: #0275d8; font-size: 16px;">{{ t_name }}</strong>
+            <ul style="margin: 8px 0 0 0; padding-right: 20px; font-size: 14px;">
+                {% for day, val in days.items() %}
+                    <li><b>{{ day }}:</b> {{ val if val else 'لا توجد حصص' }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endfor %}
+    
+    <h3>📜 التعاميم السابقة المرسلة:</h3>
     {% for ann in announcements %}
         <div class="card">
-            <strong>📢 {{ ann.title }}</strong> (موجه إلى: <em>{{ ann.target }}</em>)
+            <strong>📢 {{ ann.title }}</strong> (إلى: <em>{{ ann.target }}</em>)
             <p>{{ ann.message }}</p>
         </div>
     {% else %}
-        <p>لا توجد تعاميم مرسلة حالياً.</p>
+        <p>لا توجد تعاميم مرسلة حتى الآن.</p>
     {% endfor %}
 </div>
 '''
@@ -250,7 +269,7 @@ SECRETARY_HTML = COMMON_STYLE + '''
         <a href="/change_password">تغيير كلمة السر</a>
         <a href="/logout">تسجيل خروج</a>
     </div>
-    <h2>لوحة السكرتيرة (تعديل الجدول الأسبوعي الكامل)</h2>
+    <h2>لوحة السكرتيرة (تعديل الجداول الأسبوعية)</h2>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -261,33 +280,27 @@ SECRETARY_HTML = COMMON_STYLE + '''
     <form method="POST">
         <label>اختر المعلم:</label>
         <select name="teacher_name" required>
-            <option value="">-- اختر المعلم --</option>
+            <option value="">-- اختر المعلم لتعديل جدوله --</option>
             {% for t in teachers %}
                 <option value="{{ t }}">{{ t }}</option>
             {% endfor %}
         </select>
         
-        <h4 style="color: #0275d8; margin-top: 15px;">حدد حصص أيام الأسبوع كاملة:</h4>
-        
+        <h4 style="color: #0275d8; margin-top: 15px;">حدد حصص الأسبوع كاملة:</h4>
         <label>السبت:</label>
-        <input type="text" name="sat" placeholder="مثال: رياضيات, فراغ...">
-        
+        <input type="text" name="sat" placeholder="مثال: رياضيات...">
         <label>الأحد:</label>
-        <input type="text" name="sun" placeholder="مثال: فيزياء, لغة عربية...">
-        
+        <input type="text" name="sun" placeholder="مثال: فيزياء...">
         <label>الإثنين:</label>
-        <input type="text" name="mon" placeholder="مثال: فراغ, أنشطة...">
-        
+        <input type="text" name="mon" placeholder="مثال: فراغ...">
         <label>الثلاثاء:</label>
-        <input type="text" name="tue" placeholder="مثال: تاريخ, جغرافيا...">
-        
+        <input type="text" name="tue" placeholder="مثال: تاريخ...">
         <label>الأربعاء:</label>
         <input type="text" name="wed" placeholder="مثال: لغة إنجليزية...">
-        
         <label>الخميس:</label>
-        <input type="text" name="thu" placeholder="مثال: مراجعة أسبوعية...">
+        <input type="text" name="thu" placeholder="مثال: مراجعة...">
         
-        <button type="submit">حفظ الجدول الأسبوعي الكامل</button>
+        <button type="submit">حفظ الجدول الأسبوعي</button>
     </form>
 </div>
 '''
@@ -301,7 +314,6 @@ TEACHER_HTML = COMMON_STYLE + '''
     <h2>أهلاً بك يا أستاذ/ة: {{ name }}</h2>
     <hr>
     
-    <!-- جرس تنبيه صوتي تلقائي عند وجود إشعارات جديدة -->
     {% if announcements %}
         <audio id="notifSound" autoplay>
             <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
@@ -316,17 +328,17 @@ TEACHER_HTML = COMMON_STYLE + '''
         </script>
     {% endif %}
 
-    <h3>الاجتماعات والتعاميم الموجهة إليك:</h3>
+    <h3>🔔 التعاميم والاجتماعات الموجهة إليك:</h3>
     {% for ann in announcements %}
         <div class="card" style="border-right: 4px solid #d9534f; background: #fff5f5;">
-            <strong>🔔 {{ ann.title }}</strong>
+            <strong>{{ ann.title }}</strong>
             <p>{{ ann.message }}</p>
         </div>
     {% else %}
         <p style="color: green;">لا توجد تعاميم أو اجتماعات جديدة حالياً.</p>
     {% endfor %}
 
-    <h3>جدولك الأسبوعي الكامل:</h3>
+    <h3>📅 جدولك الأسبوعي الكامل:</h3>
     {% for day, classes in schedule.items() %}
         <div class="card">
             <strong>{{ day }}:</strong> {{ classes if classes else 'لا توجد حصص' }}
