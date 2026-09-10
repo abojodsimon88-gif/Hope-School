@@ -4,7 +4,7 @@ import os
 app = Flask(__name__)
 app.secret_key = 'eduteam_hope_school_secret_key'
 
-# قاعدة البيانات المحدثة بجميع الأسماء والصلاحيات بالتمام والكمال
+# قاعدة البيانات المحدثة
 DB = {
     'users': {
         # الإدارة والإرشاد
@@ -37,7 +37,8 @@ DB = {
         'هايدي': {'pass': '0000', 'role': 'معلمة', 'key': 'هايدي'},
         'نانسي': {'pass': '0000', 'role': 'معلمة', 'key': 'نانسي'},
         'ميري': {'pass': '0000', 'role': 'معلمة', 'key': 'ميري'},
-        'ريتا': {'pass': '0000', 'role': 'معلمة', 'key': 'ريتا'}
+        'ريتا': {'pass': '0000', 'role': 'معلمة', 'key': 'ريتا'},
+        'ابتسام': {'pass': '0000', 'role': 'معلمة', 'key': 'ابتسام'}
     },
     'schedule': {},  # {day: {location: teacher}}
     'messages': [],  # [{'sender': 'خضر', 'receivers': [...], 'text': '...'}]
@@ -124,6 +125,7 @@ def login():
                         <option value="نانسي">نانسي</option>
                         <option value="ميري">ميري</option>
                         <option value="ريتا">ريتا</option>
+                        <option value="ابتسام">ابتسام</option>
                     </optgroup>
                 </select>
                 <input type="password" name="password" placeholder="كلمة المرور (الافتراضية 0000)" required>
@@ -142,10 +144,10 @@ def dashboard():
     
     user = session['user']
     role = session['role']
-    real_name = session.get('real_name', user)
+    real_name = session.get('real_name', user.split(':')[-1].strip())
     success_msg = None
 
-    # معالجة صلاحيات السكرتيرة بريتا والمدير خضر (تعديل الجدول)
+    # معالجة تعديل الجدول (للإدارة والسكرتيرة)
     if request.method == 'POST' and 'update_schedule' in request.form:
         if role in ['سكرتيرة', 'مدير']:
             day = request.form.get('day')
@@ -154,24 +156,24 @@ def dashboard():
             if day not in DB['schedule']:
                 DB['schedule'][day] = {}
             DB['schedule'][day][loc] = teacher
-            success_msg = 'تم تحديث الجدول بنجاح!'
+            success_msg = 'تم تعديل وتحديث الجدول بنجاح!'
 
-    # معالجة صلاحيات المدير خضر (إرسال الرسائل)
+    # معالجة إرسال الرسائل (خاص بالمدير واستثناء نفسه)
     if request.method == 'POST' and 'send_message' in request.form:
         if role == 'مدير':
             receivers = request.form.getlist('receivers')
             text = request.form.get('text')
             if 'الكل' in receivers:
-                receivers = list(DB['users'].keys())
+                receivers = [u for u in DB['users'].keys() if u != user]
+            else:
+                receivers = [r for r in receivers if r != user]
+                
             if receivers and text:
                 DB['messages'].append({'sender': user, 'receivers': receivers, 'text': text})
                 success_msg = 'تم إرسال الرسالة بنجاح!'
 
-    # فلترة رسائل المستخدم الحالي
-    user_messages = [m for m in DB['messages'] if user in m['receivers'] or 'الكل' in m['receivers'] or m['sender'] == user]
-
-    # استخراج قائمة الأسماء الصافية للجدول
-    teacher_list = ['نزار', 'مايك', 'احمد', 'سابا', 'اندريس', 'وليد', 'ليلى', 'لانا', 'نقول', 'ايفا', 'لورد', 'نوها', 'منال', 'خيلاء', 'دعاء', 'سلستي', 'نور', 'رزان', 'داليا', 'هايدي', 'نانسي', 'ميري', 'ريتا']
+    user_messages = [m for m in DB['messages'] if user in m['receivers'] or m['sender'] == user]
+    teacher_list = ['نزار', 'مايك', 'احمد', 'سابا', 'اندريس', 'وليد', 'ليلى', 'لانا', 'نقول', 'ايفا', 'لورد', 'نوها', 'منال', 'خيلاء', 'دعاء', 'سلستي', 'نور', 'رزان', 'داليا', 'هايدي', 'نانسي', 'ميري', 'ريتا', 'ابتسام']
 
     html = '''
     <!DOCTYPE html>
@@ -191,8 +193,18 @@ def dashboard():
         input, select, textarea { width: 100%; padding: 8px; margin: 5px 0 12px 0; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
         button { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; }
         button:hover { background: #1d4ed8; }
+        .edit-inline-btn { background: #10b981; color: white; border: none; padding: 4px 8px; font-size: 12px; border-radius: 4px; cursor: pointer; margin-top: 5px; }
+        .edit-inline-btn:hover { background: #059669; }
         .msg-box { background: #eff6ff; border-right: 4px solid #3b82f6; padding: 10px; margin: 10px 0; border-radius: 4px; }
     </style>
+    <script>
+        function enableEdit(day, loc, currentTeacher) {
+            document.getElementById('form_day').value = day;
+            document.getElementById('form_loc').value = loc;
+            document.getElementById('form_teacher').value = currentTeacher;
+            window.scrollTo({top: document.getElementById('edit-section').offsetTop, behavior: 'smooth'});
+        }
+    </script>
     </head>
     <body>
         <div class="container">
@@ -206,8 +218,9 @@ def dashboard():
 
             {% if success_msg %}<div class="alert">{{ success_msg }}</div>{% endif %}
 
-            <!-- قسم الجدول المدرسي -->
-            <h2>📅 جدول الحصص والأماكن</h2>
+            <!-- إذا كان المستخدم مدير أو سكرتيرة: يظهر لهم الجدول الكامل لكل المعلمين مع أزرار التعديل -->
+            {% if role in ['سكرتيرة', 'مدير'] %}
+            <h2>📅 الجدول الشامل لجميع المعلمين والأماكن (خاص بالإدارة)</h2>
             <table>
                 <tr>
                     <th>اليوم / الموقع</th>
@@ -217,27 +230,58 @@ def dashboard():
                 <tr>
                     <td><b>{{ day }}</b></td>
                     {% for loc in locations %}
-                    <td>{{ schedule.get(day, {}).get(loc, '-') }}</td>
+                    <td>
+                        {% set current_t = schedule.get(day, {}).get(loc, '-') %}
+                        {{ current_t }}
+                        <br>
+                        <button type="button" class="edit-inline-btn" onclick="enableEdit('{{ day }}', '{{ loc }}', '{{ current_t if current_t != '-' else teacher_list[0] }}')">تعديل ✏️</button>
+                    </td>
                     {% endfor %}
                 </tr>
                 {% endfor %}
             </table>
 
-            <!-- صلاحيات التعديل (بريتا أو المدير) -->
-            {% if role in ['سكرتيرة', 'مدير'] %}
-            <form method="POST">
-                <h3>✏️ تعديل الجدول المدرسي (خاص بالإدارة والسكرتيرة)</h3>
+            <form method="POST" id="edit-section">
+                <h3>✏️ تعديل وتحديث الجدول المدرسي</h3>
                 <input type="hidden" name="update_schedule" value="1">
                 <label>اليوم:</label>
-                <select name="day" required>{% for d in days %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select>
-                <label>الموقع (حسب التسلسل):</label>
-                <select name="location" required>{% for l in locations %}<option value="{{ l }}">{{ l }}</option>{% endfor %}</select>
+                <select name="day" id="form_day" required>{% for d in days %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select>
+                <label>الموقع:</label>
+                <select name="location" id="form_loc" required>{% for l in locations %}<option value="{{ l }}">{{ l }}</option>{% endfor %}</select>
                 <label>المعلم / المربي:</label>
-                <select name="teacher" required>
+                <select name="teacher" id="form_teacher" required>
                     {% for t in teacher_list %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
                 </select>
-                <button type="submit">حفظ التعديل في الجدول</button>
+                <button type="submit">حفظ التعديل المباشر</button>
             </form>
+            {% else %}
+            <!-- إذا كان المستخدم معلماً أو مربياً عادياً: يرى جدوله الشخصي فقط أين هو موزع خلال الأسبوع -->
+            <h2>📅 جدول الحصص الخاص بي (المعلم: {{ real_name }})</h2>
+            <table>
+                <tr>
+                    <th>اليوم</th>
+                    <th>الموقع المخصص لك</th>
+                </tr>
+                {% for day in days %}
+                <tr>
+                    <td><b>{{ day }}</b></td>
+                    <td>
+                        {% set found_locs = [] %}
+                        {% for loc in locations %}
+                            {% if schedule.get(day, {}).get(loc) == real_name %}
+                                {% set _ = found_locs.append(loc) %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% if found_locs %}
+                            <span style="color: #059669; font-weight: bold;">{{ found_locs | join(' و ') }}</span>
+                        {% else %}
+                            <span style="color: #94a3b8;">لا توجد مناوبة مسجلة في هذا اليوم</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
             {% endif %}
 
             <!-- صلاحيات المراسلة (خاص بالمدير خضر) -->
@@ -247,8 +291,12 @@ def dashboard():
                 <input type="hidden" name="send_message" value="1">
                 <label>إرسال إلى:</label>
                 <select name="receivers" multiple style="height: 120px;" required>
-                    <option value="الكل">--- إرسال للجميع ---</option>
-                    {% for u in users %}<option value="{{ u }}">{{ u }}</option>{% endfor %}
+                    <option value="الكل">--- إرسال للجميع (ما عدا المدير) ---</option>
+                    {% for u in users %}
+                        {% if u != user %}
+                        <option value="{{ u }}">{{ u }}</option>
+                        {% endif %}
+                    {% endfor %}
                 </select>
                 <small style="color: #64748b;">(اضغط مع الاستمرار لتحديد أكثر من شخص أو اختر الكل)</small>
                 <label>نص الرسالة:</label>
@@ -262,7 +310,7 @@ def dashboard():
             {% if user_messages %}
                 {% for m in user_messages %}
                 <div class="msg-box">
-                    <b>من: {{ m.sender }}</b> | <b>إلى: النظام / المجموعات</b>
+                    <b>من: {{ m.sender }}</b> | <b>المستلمون: {{ m.receivers | join(', ') }}</b>
                     <p>{{ m.text }}</p>
                 </div>
                 {% endfor %}
@@ -273,7 +321,7 @@ def dashboard():
     </body>
     </html>
     '''
-    return render_template_string(html, user=user, role=role, days=DAYS, locations=LOCATIONS, schedule=DB['schedule'], users=DB['users'], teacher_list=teacher_list, user_messages=user_messages, success_msg=success_msg)
+    return render_template_string(html, user=user, role=role, real_name=real_name, days=DAYS, locations=LOCATIONS, schedule=DB['schedule'], users=DB['users'], teacher_list=teacher_list, user_messages=user_messages, success_msg=success_msg)
 
 @app.route('/logout')
 def logout():
