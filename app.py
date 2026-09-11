@@ -397,4 +397,27 @@ def dashboard():
             <h2>📥 الرسائل الواردة</h2>
             {% if user_messages %}
                 {% for m in user_messages %}
-                <div
+                <div class="msg-box">
+                    <b>من: {{ m.sender }}</b> | <b>المستلمون: {{ m.receivers | join(', ') }}</b>
+                    <p>{{ m.text }}</p>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>لا توجد رسائل حالياً.</p>
+            {% endif %}
+        </div>
+    </body>
+    </html>
+    '''
+    return render_template_string(html, user=user, role=role, real_name=real_name, days=DAYS, locations=LOCATIONS, schedule_upper=DB['schedule_upper'], schedule_lower=DB['schedule_lower'], users=DB['users'], teacher_list=teacher_list, user_messages=user_messages, success_msg=success_msg)
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    resp = make_response(redirect(url_for('login')))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
