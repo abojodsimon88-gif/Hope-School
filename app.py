@@ -1,48 +1,66 @@
 from flask import Flask, render_template_string, request, redirect, url_for, session, make_response
 import os
+import json
 
 app = Flask(__name__)
 app.secret_key = 'eduteam_hope_school_secret_key'
 
-# قاعدة البيانات المحدثة
-DB = {
-    'users': {
-        # الإدارة والإرشاد
-        'المدير: خضر': {'pass': '0000', 'role': 'مدير', 'key': 'خضر'},
-        'السكرتيرة: بريتا': {'pass': '0000', 'role': 'سكرتيرة', 'key': 'بريتا'},
-        'المرشد الاجتماعي: فؤاد': {'pass': '0000', 'role': 'مرشد', 'key': 'فؤاد'},
-        
-        # المربون
-        'نزار': {'pass': '0000', 'role': 'معلم', 'key': 'نزار'},
-        'مايك': {'pass': '0000', 'role': 'معلم', 'key': 'مايك'},
-        'احمد': {'pass': '0000', 'role': 'معلم', 'key': 'احمد'},
-        'سابا': {'pass': '0000', 'role': 'معلم', 'key': 'سابا'},
-        'اندريس': {'pass': '0000', 'role': 'معلم', 'key': 'اندريس'},
-        'وليد': {'pass': '0000', 'role': 'معلم', 'key': 'وليد'},
-        
-        # المربيات
-        'ليلى': {'pass': '0000', 'role': 'معلمة', 'key': 'ليلى'},
-        'لانا': {'pass': '0000', 'role': 'معلمة', 'key': 'لانا'},
-        'نقول': {'pass': '0000', 'role': 'معلمة', 'key': 'نقول'},
-        'ايفا': {'pass': '0000', 'role': 'معلمة', 'key': 'ايفا'},
-        'لورد': {'pass': '0000', 'role': 'معلمة', 'key': 'لورد'},
-        'نوها': {'pass': '0000', 'role': 'معلمة', 'key': 'نوها'},
-        'منال': {'pass': '0000', 'role': 'معلمة', 'key': 'منال'},
-        'خيلاء': {'pass': '0000', 'role': 'معلمة', 'key': 'خيلاء'},
-        'دعاء': {'pass': '0000', 'role': 'معلمة', 'key': 'دعاء'},
-        'سلستي': {'pass': '0000', 'role': 'معلمة', 'key': 'سلستي'},
-        'نور': {'pass': '0000', 'role': 'معلمة', 'key': 'نور'},
-        'رزان': {'pass': '0000', 'role': 'معلمة', 'key': 'رزان'},
-        'داليا': {'pass': '0000', 'role': 'معلمة', 'key': 'داليا'},
-        'هايدي': {'pass': '0000', 'role': 'معلمة', 'key': 'هايدي'},
-        'نانسي': {'pass': '0000', 'role': 'معلمة', 'key': 'نانسي'},
-        'ميري': {'pass': '0000', 'role': 'معلمة', 'key': 'ميري'},
-        'ريتا': {'pass': '0000', 'role': 'معلمة', 'key': 'ريتا'},
-        'ابتسام': {'pass': '0000', 'role': 'معلمة', 'key': 'ابتسام'}
-    },
-    'schedule': {},  # {day: {location: teacher}}
-    'messages': [],  # [{'sender': 'خضر', 'receivers': [...], 'text': '...'}]
-}
+# اسم ملف التخزين الدائم على السيرفر
+DB_FILE = 'data.json'
+
+# تحميل البيانات من الملف أو استخدام القيمة الافتراضية لو الملف مش موجود
+def load_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        'users': {
+            # الإدارة والإرشاد
+            'المدير: خضر': {'pass': '0000', 'role': 'مدير', 'key': 'خضر'},
+            'السكرتيرة: بريتا': {'pass': '0000', 'role': 'سكرتيرة', 'key': 'بريتا'},
+            'المرشد الاجتماعي: فؤاد': {'pass': '0000', 'role': 'مرشد', 'key': 'فؤاد'},
+            
+            # المربون
+            'نزار': {'pass': '0000', 'role': 'معلم', 'key': 'نزار'},
+            'مايك': {'pass': '0000', 'role': 'معلم', 'key': 'مايك'},
+            'احمد': {'pass': '0000', 'role': 'معلم', 'key': 'احمد'},
+            'سابا': {'pass': '0000', 'role': 'معلم', 'key': 'سابا'},
+            'اندريس': {'pass': '0000', 'role': 'معلم', 'key': 'اندريس'},
+            'وليد': {'pass': '0000', 'role': 'معلم', 'key': 'وليد'},
+            
+            # المربيات
+            'ليلى': {'pass': '0000', 'role': 'معلمة', 'key': 'ليلى'},
+            'لانا': {'pass': '0000', 'role': 'معلمة', 'key': 'لانا'},
+            'نقول': {'pass': '0000', 'role': 'معلمة', 'key': 'نقول'},
+            'ايفا': {'pass': '0000', 'role': 'معلمة', 'key': 'ايفا'},
+            'لورد': {'pass': '0000', 'role': 'معلمة', 'key': 'لورد'},
+            'نوها': {'pass': '0000', 'role': 'معلمة', 'key': 'نوها'},
+            'منال': {'pass': '0000', 'role': 'معلمة', 'key': 'منال'},
+            'خيلاء': {'pass': '0000', 'role': 'معلمة', 'key': 'خيلاء'},
+            'دعاء': {'pass': '0000', 'role': 'معلمة', 'key': 'دعاء'},
+            'سلستي': {'pass': '0000', 'role': 'معلمة', 'key': 'سلستي'},
+            'نور': {'pass': '0000', 'role': 'معلمة', 'key': 'نور'},
+            'رزان': {'pass': '0000', 'role': 'معلمة', 'key': 'رزان'},
+            'داليا': {'pass': '0000', 'role': 'معلمة', 'key': 'داليا'},
+            'هايدي': {'pass': '0000', 'role': 'معلمة', 'key': 'هايدي'},
+            'نانسي': {'pass': '0000', 'role': 'معلمة', 'key': 'نانسي'},
+            'ميري': {'pass': '0000', 'role': 'معلمة', 'key': 'ميري'},
+            'ريتا': {'pass': '0000', 'role': 'معلمة', 'key': 'ريتا'},
+            'ابتسام': {'pass': '0000', 'role': 'معلمة', 'key': 'ابتسام'}
+        },
+        'schedule': {},  # {day: {location: teacher}}
+        'messages': [],  # [{'sender': 'خضر', 'receivers': [...], 'text': '...'}]
+    }
+
+# حفظ البيانات للملف
+def save_db(data):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+DB = load_db()
 
 DAYS = ['السبت', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس']
 LOCATIONS = ['الباب الرئيسي', 'الساحة الأولى', 'الساحة الثانية', 'باب الدرج']
@@ -147,7 +165,7 @@ def dashboard():
     real_name = session.get('real_name', user.split(':')[-1].strip())
     success_msg = None
 
-    # معالجة تعديل الجدول (للإدارة والسكرتيرة)
+    # معالجة تعديل الجدول (للإدارة والسكرتيرة) وحفظه فوراً في الملف
     if request.method == 'POST' and 'update_schedule' in request.form:
         if role in ['سكرتيرة', 'مدير']:
             day = request.form.get('day')
@@ -156,9 +174,10 @@ def dashboard():
             if day not in DB['schedule']:
                 DB['schedule'][day] = {}
             DB['schedule'][day][loc] = teacher
+            save_db(DB)  # حفظ دائم في ملف JSON
             success_msg = 'تم تعديل وتحديث الجدول بنجاح!'
 
-    # معالجة إرسال الرسائل (خاص بالمدير واستثناء نفسه)
+    # معالجة إرسال الرسائل (خاص بالمدير وحفظها فوراً)
     if request.method == 'POST' and 'send_message' in request.form:
         if role == 'مدير':
             receivers = request.form.getlist('receivers')
@@ -170,6 +189,7 @@ def dashboard():
                 
             if receivers and text:
                 DB['messages'].append({'sender': user, 'receivers': receivers, 'text': text})
+                save_db(DB)  # حفظ دائم في ملف JSON
                 success_msg = 'تم إرسال الرسالة بنجاح!'
 
     user_messages = [m for m in DB['messages'] if user in m['receivers'] or m['sender'] == user]
@@ -218,7 +238,7 @@ def dashboard():
 
             {% if success_msg %}<div class="alert">{{ success_msg }}</div>{% endif %}
 
-            <!-- إذا كان المستخدم مدير أو سكرتيرة: يظهر لهم الجدول الكامل لكل المعلمين مع أزرار التعديل -->
+            <!-- إذا كان المستخدم مدير أو سكرتيرة: يظهر لهم الجدول الكامل -->
             {% if role in ['سكرتيرة', 'مدير'] %}
             <h2>📅 الجدول الشامل لجميع المعلمين والأماكن (خاص بالإدارة)</h2>
             <table>
@@ -255,7 +275,7 @@ def dashboard():
                 <button type="submit">حفظ التعديل المباشر</button>
             </form>
             {% else %}
-            <!-- إذا كان المستخدم معلماً أو مربياً عادياً: يرى جدوله الشخصي فقط أين هو موزع خلال الأسبوع -->
+            <!-- إذا كان المستخدم معلماً أو مربياً عادياً: يرى جدوله الشخصي فقط -->
             <h2>📅 جدول الحصص الخاص بي (المعلم: {{ real_name }})</h2>
             <table>
                 <tr>
