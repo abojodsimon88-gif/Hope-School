@@ -7,13 +7,7 @@ app.secret_key = 'eduteam_hope_school_secret_key'
 
 DB_FILE = 'data.json'
 
-def load_db():
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            pass
+def get_default_db():
     return {
         'users': {
             'المدير: خضر': {'pass': '0000', 'role': 'مدير', 'key': 'خضر'},
@@ -48,6 +42,22 @@ def load_db():
         'schedule_lower': {},  # جدول الصفوف الدنيا
         'messages': [],
     }
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # التأكد من وجود المفاتيح الأساسية لضمان عدم حدوث أي خطأ
+                if 'users' in data and 'schedule_upper' in data and 'schedule_lower' in data and 'messages' in data:
+                    return data
+        except:
+            pass
+    
+    # إذا لم يكن الملف موجوداً أو حدث خطأ، قم بإنشائه بالبيانات الافتراضية فوراً
+    default_data = get_default_db()
+    save_db(default_data)
+    return default_data
 
 def save_db(data):
     with open(DB_FILE, 'w', encoding='utf-8') as f:
