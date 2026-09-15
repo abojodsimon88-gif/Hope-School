@@ -1,0 +1,30 @@
+from flask import Flask, render_template, request, redirect, url_for
+import os
+from supabase import create_client, Client
+
+app = Flask(__name__)
+app.secret_key = 'eduteam_hope_school_secret_key'
+
+# إعدادات اتصال Supabase
+SUPABASE_URL = "https://czozxjrdbdlgqctytzow.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN6b3p4anJkYmRsZ3FjdHl0em93Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk0Nzk5ODgsImV4cCI6MjEwNTA1NTk4OH0.WMn_61wcRYNdsRmg5uLuYlHQ3iYYKZju5PxplvbC0hQ"
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+@app.route('/')
+def index():
+    # جلب البيانات من جدول school_data على السحابة
+    response = supabase.table('school_data').select('*').execute()
+    data = response.data
+    return render_template('index.html', data=data)
+
+@app.route('/add', methods=['POST'])
+def add_data():
+    content = request.form.get('content')
+    if content:
+        # إدخال البيانات للجدول في Supabase
+        supabase.table('school_data').insert({"content": content}).execute()
+    return redirect(url_for('index'))
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
