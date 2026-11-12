@@ -1,42 +1,42 @@
-import base64
-import hmac
-import json
-import os
-import secrets
-import time
+استيراد base64
+استيراد hmac
+استيراد json
+استيراد نظام التشغيل
+استيراد الأسرار
+وقت الاستيراد
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
+من datetime استورد timedelta
 from urllib.parse import urlparse
 
-import pymysql
+استيراد pymysql
 from pymysql.cursors import DictCursor
-from flask import (
-    Flask, render_template_string, request, redirect, url_for, session,
-    make_response, abort, Response, jsonify,
+من flask استورد (
+    Flask، render_template_string، request، redirect، url_for، session،
+    إنشاء استجابة، إجهاض، استجابة، تحويل إلى JSON
 )
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.security import generate_password_hash, check_password_hash
+من werkzeug.middleware.proxy_fix استورد ProxyFix
+من مكتبة werkzeug.security، استوردنا الدالتين generate_password_hash و check_password_hash.
 
-try:
+يحاول:
     from pywebpush import webpush, WebPushException
-except Exception:   # المكتبة غير مثبّتة: يعمل الموقع بدون إشعارات
+باستثناء الاستثناء: # المكتبة غير مبنية: وظائف الموقع بدون إشعارات
     webpush = None
-    WebPushException = Exception
+    WebPushException = استثناء
 
-# ----------------------------------------------------------------------
-# الإعدادات
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
+|
+----------------------------------------------------------------------
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 ON_RENDER = bool(os.environ.get("RENDER"))
 
 _secret = os.environ.get("SECRET_KEY")
-if not _secret:
-    if ON_RENDER:
-        raise RuntimeError("يجب ضبط متغير البيئة SECRET_KEY على Render.")
+إذا لم يكن _سراً:
+    إذا كان ON_RENDER:
+        rise RuntimeError("يجب ضبط البيئة المتنوعة SECRET_KEY على Render.")
     _secret = secrets.token_hex(32)
 app.secret_key = _secret
 
@@ -49,8 +49,8 @@ app.config.update(
 )
 
 _missing = [n for n in ("DB_HOST", "DB_NAME", "DB_USER", "DB_PASSWORD") if not os.environ.get(n)]
-if _missing:
-    raise RuntimeError("متغيرات البيئة التالية ناقصة: " + ", ".join(_missing))
+إذا كان _مفقودًا:
+    rise RuntimeError("متغيرات البيئة التالية ناقصة: " + ", ".join(_missing))
 
 DB_CONFIG = dict(
     host=os.environ["DB_HOST"],
@@ -64,112 +64,112 @@ DB_CONFIG = dict(
     autocommit=False,
 )
 
-DEFAULT_PASSWORD = "0000"   # كلمة المرور الأولى، ويُجبر المستخدم على تغييرها
-MIN_PASSWORD_LEN = 8
-MAX_FAILS = 5
-FAIL_WINDOW = 15 * 60
+DEFAULT_PASSWORD = "0000" # كلمة المرور الأولى، ويجبر المستخدم على تغييرها
+الحد الأدنى لطول كلمة المرور = 8
+الحد الأقصى للفشل = 5
+نافذة الفشل = 15 * 60
 TEMP_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
 
 DAYS = ['السبت', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس']
-LOCATIONS = ['الباب الرئيسي', 'الساحة الأولى', 'الساحة الثانية', 'باب الدرج']
+LOCATIONS = ['الباب الرئيسي', 'الساحة الأولى', 'الساحة الثانية', 'باب الدرج الرئيسي']
 
 # (اسم الدخول، الدور، الاسم الحقيقي)
-USER_LIST = [
-    ('المدير: خضر', 'مدير', 'خضر'),
-    ('السكرتيرة: بريتا', 'سكرتيرة', 'بريتا'),
+قائمة المستخدمين = [
+    ('المدير: خضر'، 'مدير'، 'خضر')،
+    ('السكرتيرة: بريتا'، 'سكرتيرة'، 'بريتا')،
     ('المرشد الاجتماعي: فؤاد', 'مرشد', 'فؤاد'),
-    ('نزار', 'معلم', 'نزار'),
-    ('مايك', 'معلم', 'مايك'),
-    ('احمد', 'معلم', 'احمد'),
-    ('سابا', 'معلم', 'سابا'),
-    ('اندريس', 'معلم', 'اندريس'),
-    ('وليد', 'معلم', 'وليد'),
-    ('ليلى', 'معلمة', 'ليلى'),
-    ('لانا', 'معلمة', 'لانا'),
-    ('نقول', 'معلمة', 'نقول'),
-    ('ايفا', 'معلمة', 'ايفا'),
-    ('لورد', 'معلمة', 'لورد'),
-    ('نوها', 'معلمة', 'نوها'),
-    ('منال', 'معلمة', 'منال'),
-    ('خيلاء', 'معلمة', 'خيلاء'),
-    ('دعاء', 'معلمة', 'دعاء'),
-    ('سلستي', 'معلمة', 'سلستي'),
-    ('نور', 'معلمة', 'نور'),
-    ('رزان', 'معلمة', 'رزان'),
-    ('داليا', 'معلمة', 'داليا'),
-    ('هايدي', 'معلمة', 'هايدي'),
-    ('نانسي', 'معلمة', 'نانسي'),
-    ('ميري', 'معلمة', 'ميري'),
-    ('ريتا', 'معلمة', 'ريتا'),
-    ('ابتسام', 'معلمة', 'ابتسام'),
+    ('نزار'، 'معلم'، 'نزار')،
+    ('مايك'، 'معلم'، 'مايك')،
+    ('احمد'، 'معلم'، 'احمد')،
+    ('سابا'، 'معلم'، 'سابا')،
+    ('اندريس'، 'معلم'، 'اندريس')،
+    ('وليد'، 'معلم'، 'وليد')،
+    ('ليلى'، 'معلمة'، 'ليلى')،
+    ('لانا'، 'معلمة'، 'لانا')،
+    ('نقول'، 'معلمة'، 'نقول')،
+    ('إيفا'، 'معلمة'، 'إيفا')،
+    ('الرب'، 'معلمة'، 'الرب')،
+    ('نوها'، 'معلمة'، 'نوها')،
+    ('منال'، 'معلمة'، 'منال')،
+    ('خيلاء'، 'معلمة'، 'خيلاء')،
+    ('دعاء'، 'معلمة'، 'دعاء')،
+    ('سلستي'، 'معلمة'، 'سلستي')،
+    ('نور'، 'معلمة'، 'نور')،
+    ('رزان'، 'معلمة'، 'رزان')،
+    ('داليا'، 'معلمة'، 'داليا')،
+    ('هايدي'، 'معلمة'، 'هايدي')،
+    ('نانسي'، 'معلمة'، 'نانسي')،
+    ('ميري'، 'معلمة'، 'ميري')،
+    ('ريتا'، 'معلمة'، 'ريتا')،
+    ('ابتسام'، 'معلمة'، 'ابتسام')،
 ]
 
-TEACHER_LIST = [key for _name, role, key in USER_LIST if role in ('معلم', 'معلمة')]
+قائمة المعلمين = [مفتاح للاسم، الدور، المفتاح في قائمة المستخدمين إذا كان الدور في ('معلم'، 'معلمة')]
 
-LOGIN_GROUPS = [
+مجموعات تسجيل الدخول = [
     ('الإدارة والإرشاد', [n for n, r, _k in USER_LIST if r in ('مدير', 'سكرتيرة', 'مرشد')]),
-    ('المربون', [n for n, r, _k in USER_LIST if r == 'معلم']),
-    ('المربيات', [n for n, r, _k in USER_LIST if r == 'معلمة']),
+    ('المربون', [n for n, r, _k في USER_LIST if r == 'معلم'])،
+    ('المربيات', [n for n, r, _k في USER_LIST if r == 'معلمة'])،
 ]
 
 
-# ----------------------------------------------------------------------
-# التخزين الدائم في MySQL (صف واحد يحمل كل بيانات التطبيق بصيغة JSON)
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
+# التخزين الجديد في MySQL (صف واحد من عصر كل بيانات التطبيق بصيغة JSON)
+----------------------------------------------------------------------
 def _connect():
     return pymysql.connect(**DB_CONFIG)
 
 
 def _execute(sql, params=(), fetch=None):
     conn = _connect()
-    try:
-        with conn.cursor() as cur:
+    يحاول:
+        باستخدام conn.cursor() كـ cur:
             cur.execute(sql, params)
             result = cur.fetchone() if fetch == "one" else None
         conn.commit()
-        return result
-    except Exception:
+        إرجاع النتيجة
+    باستثناء الاستثناء:
         conn.rollback()
-        raise
-    finally:
+        يرفع
+    أخيراً:
         conn.close()
 
 
-def get_default_db():
-    users = {}
+دالة get_default_db():
+    المستخدمون = {}
     admin_pw = os.environ.get("ADMIN_INITIAL_PASSWORD")
-    for name, role, key in USER_LIST:
-        pw_hash = ''   # فارغ = لم يغيّر كلمة المرور الأولى بعد
-        if role == 'مدير' and admin_pw:
+    لكل اسم، دور، مفتاح في قائمة المستخدمين:
+        pw_hash = '' #كامل = لم يغيّر كلمة المرور الأولى بعد
+        إذا كان الدور == 'مدير' وadmin_pw:
             pw_hash = generate_password_hash(admin_pw)
         users[name] = {'pass': pw_hash, 'role': role, 'key': key, 'must_change': True}
-    return {
-        'users': users,
-        'schedule_upper': {},   # جدول الصفوف العليا
-        'schedule_lower': {},   # جدول الصفوف الدنيا
-        'messages': [],
-        'push': {},             # اشتراكات الإشعارات لكل مستخدم
+    يعود {
+        المستخدمون: المستخدمون،
+        'schedule_upper': {}, # جدول الصفوف العليا
+        'schedule_lower': {}, # جدول الصفوف الدنيا
+        'رسائل': []،
+        'push': {}, # اشتراكات الإخطارات لكل مستخدم
     }
 
 
 def init_db():
-    _execute(
-        "CREATE TABLE IF NOT EXISTS app_state ("
-        "id INT NOT NULL PRIMARY KEY,"
+    _ينفذ(
+        "إنشاء جدول إذا لم يكن موجودًا app_state ("
+        "id INT NOT NULL PRIMARY KEY",
         "data LONGTEXT NOT NULL"
         ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
     )
     row = _execute("SELECT id FROM app_state WHERE id = 1", fetch="one")
-    if row is None:
-        _execute(
+    إذا كان الصف فارغًا:
+        _ينفذ(
             "INSERT IGNORE INTO app_state (id, data) VALUES (1, %s)",
             (json.dumps(get_default_db(), ensure_ascii=False),),
         )
 
 
-def load_db():
+دالة تحميل قاعدة البيانات ()
     row = _execute("SELECT data FROM app_state WHERE id = 1", fetch="one")
-    if row is None:
+    إذا كان الصف فارغًا:
         init_db()
         row = _execute("SELECT data FROM app_state WHERE id = 1", fetch="one")
     data = json.loads(row["data"])
@@ -178,46 +178,46 @@ def load_db():
     data.setdefault('schedule_lower', {})
     data.setdefault('messages', [])
     data.setdefault('push', {})
-    return data
+    بيانات الإرجاع
 
 
 def save_db(data):
-    _execute(
+    _ينفذ(
         "INSERT INTO app_state (id, data) VALUES (1, %s) "
         "ON DUPLICATE KEY UPDATE data = VALUES(data)",
         (json.dumps(data, ensure_ascii=False),),
     )
 
 
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
 # الأمان: كلمات المرور، تحديد المحاولات، CSRF
-# ----------------------------------------------------------------------
-def check_login(user, password):
-    stored = user.get('pass') or ''
-    if not stored:
+----------------------------------------------------------------------
+دالة التحقق من تسجيل الدخول (المستخدم، كلمة المرور):
+    تم تخزينها = user.get('pass') أو ''
+    إذا لم يتم تخزينها:
         return hmac.compare_digest(password.encode(), DEFAULT_PASSWORD.encode())
-    try:
+    يحاول:
         return check_password_hash(stored, password)
-    except ValueError:
-        return False
+    باستثناء خطأ القيمة:
+        إرجاع خطأ
 
 
 def new_temp_password():
     return ''.join(secrets.choice(TEMP_ALPHABET) for _ in range(8))
 
 
-FAILS = {}
+الفشل = {}
 
 
-def too_many(ident):
-    now = time.time()
+دالة too_many(ident):
+    الآن = الوقت.الوقت()
     recent = [t for t in FAILS.get(ident, []) if now - t < FAIL_WINDOW]
     FAILS[ident] = recent
-    return len(recent) >= MAX_FAILS
+    أرجع طول (الحالات الأخيرة) أكبر من أو يساوي الحد الأقصى للحالات الفاشلة
 
 
 def record_fail(ident):
-    if len(FAILS) > 5000:
+    إذا كان طول (FAILS) أكبر من 5000:
         FAILS.clear()
     FAILS.setdefault(ident, []).append(time.time())
 
@@ -226,17 +226,17 @@ def clear_fails(ident):
     FAILS.pop(ident, None)
 
 
-def clear_fails_for_user(username):
-    """يفك القفل عن مستخدم (من كل العناوين) بعد إعادة تعيين كلمة مروره."""
-    suffix = '|' + username
+دالة clear_fails_for_user(اسم_المستخدم):
+    """يفك القفل مستخدم (من اللون البني بالكامل) بعد إعادة تعيين كلمة مروره."""
+    اللاحقة = '|' + اسم المستخدم
     for key in [k for k in FAILS if k.endswith(suffix)]:
         FAILS.pop(key, None)
 
 
-def csrf_token():
-    if 'csrf' not in session:
+دالة csrf_token():
+    إذا لم تكن كلمة "csrf" موجودة في الجلسة:
         session['csrf'] = secrets.token_hex(16)
-    return session['csrf']
+    إرجاع جلسة['csrf']
 
 
 app.jinja_env.globals['csrf_token'] = csrf_token
@@ -244,73 +244,73 @@ app.jinja_env.globals['csrf_token'] = csrf_token
 
 @app.before_request
 def csrf_protect():
-    if request.method == 'POST':
+    إذا كانت طريقة الطلب هي 'POST':
         sent = (request.form.get('csrf') or request.headers.get('X-CSRF-Token') or '').encode()
-        expected = (session.get('csrf') or '').encode()
-        if not expected or not hmac.compare_digest(sent, expected):
+        المتوقع = (session.get('csrf') or '').encode()
+        إذا لم يكن متوقعًا أو لم يتم استخدام hmac.compare_digest(sent, expected):
             abort(400)
 
 
 @app.after_request
 def add_security_headers(response):
-    if 'Cache-Control' not in response.headers:
+    إذا لم يكن 'Cache-Control' موجودًا في response.headers:
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '0'
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['Referrer-Policy'] = 'same-origin'
-    if ON_RENDER:
+    إذا كان ON_RENDER:
         response.headers['Strict-Transport-Security'] = 'max-age=31536000'
-    return response
+    إرجاع الاستجابة
 
 
 @app.errorhandler(400)
 def bad_request(_e):
-    return 'طلب غير صالح. أعد تحميل الصفحة وحاول مرة أخرى.', 400
+    إرجاع "طلب غير صالح". قم بتحميل الصفحة مرة أخرى مرة أخرى.', 400
 
 
 @app.errorhandler(403)
 def forbidden(_e):
-    return 'ليس لديك صلاحية لهذه العملية.', 403
+    إرجاع 'ليس لديك حرية لهذه المنطقة'، 403
 
 
-def client_ip():
+دالة client_ip():
     return (request.remote_addr or 'unknown')[:45]
 
 
 def flash_msg(text, ok=True):
-    session['flash'] = ['ok' if ok else 'error', text]
+    session['flash'] = ['ok' إذا كان ok وإلا 'error', text]
 
 
 def current():
-    """يرجع (قاعدة البيانات، سجل المستخدم الحالي) أو (None, None)."""
-    username = session.get('user')
-    if not username:
-        return None, None
+    """يرجع (قاعدة البيانات، سجل المستخدم الحالي) أو (لا شيء، لا شيء)."""
+    اسم المستخدم = جلسة.get('user')
+    إذا لم يكن اسم المستخدم:
+        إرجاع لا شيء، لا شيء
     db = load_db()
     me = db['users'].get(username)
-    if me is None:
+    إذا كان أنا لا شيء:
         session.clear()
-        return None, None
-    return db, me
+        إرجاع لا شيء، لا شيء
+    أعد قاعدة البيانات، أنا
 
 
 def require_admin():
-    """يرجع (db, me, None) للمدير، أو (None, None, استجابة) لغيره."""
+    """يرجع (db, me, None) للمدير، أو (None, None, الويب) فقط."""
     db, me = current()
-    if me is None:
-        return None, None, redirect(url_for('login'))
-    if me.get('must_change'):
+    إذا كان أنا لا شيء:
+        أرجع None، None، ثم أعد التوجيه إلى عنوان URL الخاص بـ 'login'.
+    إذا كان me.get('must_change'):
         return None, None, redirect(url_for('change_password'))
-    if me['role'] != 'مدير':
-        abort(403)
-    return db, me, None
+    إذا كان دوري لا يساوي 'الدور':
+        إجهاض (403)
+    إرجاع قاعدة البيانات، أنا، لا شيء
 
 
-# ----------------------------------------------------------------------
-# التصميم
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
+|الخيال
+----------------------------------------------------------------------
 BASE_CSS = '''
 :root { --bg:#f1f5f9; --card:#fff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
         --brand:#4f46e5; --brand2:#7c3aed; --ok:#16a34a; --warn:#f59e0b; --bad:#dc2626; }
@@ -320,15 +320,15 @@ a { color: var(--brand); }
 .topbar { background: linear-gradient(135deg, var(--brand), var(--brand2)); color: #fff; padding: 16px 18px; }
 .topbar-in { max-width: 1000px; margin: auto; display: flex; justify-content: space-between;
              align-items: center; flex-wrap: wrap; gap: 12px; }
-.brand { font-size: 20px; font-weight: bold; }
-.who { font-size: 14px; opacity: .95; margin-top: 4px; }
+.brand { حجم الخط: 20 بكسل؛ وزن الخط: عريض؛ }
+.who { حجم الخط: 14 بكسل؛ الشفافية: 0.95؛ الهامش العلوي: 4 بكسل؛ }
 .nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .btn { display: inline-block; border: 0; border-radius: 10px; padding: 9px 14px; font-size: 14px;
-       font-weight: bold; cursor: pointer; text-decoration: none; color: #fff; background: var(--brand); }
+       وزن الخط: غامق؛ مؤشر الماوس: مؤشر؛ زخرفة النص: لا شيء؛ اللون: #fff؛ الخلفية: var(--brand)؛ }
 .btn:hover { filter: brightness(1.08); }
 .btn.light { background: rgba(255,255,255,.2); }
 .btn.ok { background: var(--ok); } .btn.warn { background: var(--warn); color: #1f2937; }
-.btn.bad { background: var(--bad); }
+.btn.bad { الخلفية: var(--bad); }
 .btn.small { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
 .wrap { max-width: 1000px; margin: 20px auto; padding: 0 14px 40px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px;
@@ -346,10 +346,10 @@ td { padding: 10px; text-align: center; border-bottom: 1px solid var(--line); fo
 tr:last-child td { border-bottom: 0; }
 td.dayname { font-weight: bold; background: #f8fafc; }
 .chip { display: inline-block; background: #e0e7ff; color: #3730a3; padding: 3px 10px; border-radius: 999px;
-        font-weight: bold; font-size: 13px; }
+        وزن الخط: غامق؛ حجم الخط: 13 بكسل؛ }
 .empty { color: #cbd5e1; }
 .tag { display: inline-block; background: #e0e7ff; color: #3730a3; border-radius: 6px; padding: 2px 8px;
-       font-size: 12px; font-weight: bold; margin-left: 6px; }
+       حجم الخط: 12 بكسل؛ وزن الخط: غامق؛ الهامش الأيسر: 6 بكسل؛ }
 .tag.low { background: #ccfbf1; color: #115e59; }
 .muted { color: var(--muted); }
 .days { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
@@ -361,18 +361,25 @@ form.box { background: #f8fafc; border: 1px solid var(--line); border-radius: 14
 label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 2px; }
 input, select, textarea { width: 100%; padding: 10px; margin: 4px 0 12px; border: 1px solid #cbd5e1;
                           border-radius: 10px; font-size: 15px; font-family: inherit; background: #fff; }
+input[type=checkbox] { width: auto; margin: 0 0 0 10px; padding: 0; transform: scale(1.3); }
+.recv-group { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 10px 0; background: #fff; }
+.recv-title { font-weight: bold; margin-bottom: 8px; color: var(--ink); }
+.recv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.recv-item { display: flex; align-items: center; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px;
+             الخلفية: #f8fafc؛ حجم الخط: 15 بكسل؛ اللون: متغير (--ink)؛ المؤشر: مؤشر؛ الهامش: 0؛ }
+.recv-item:has(input:checked) { background: #eef2ff; border-color: #c7d2fe; }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
 .msg { border-right: 4px solid var(--brand); background: #eef2ff; border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
-.msg .meta { font-size: 13px; color: var(--muted); }
+.msg .meta { حجم الخط: 13 بكسل؛ اللون: متغير (--muted)؛ }
 .msg p { margin: 6px 0 0; white-space: pre-wrap; }
 .temp { direction: ltr; unicode-bidi: plaintext; display: inline-block; font-family: monospace; font-size: 22px;
-        background: #fff; border: 2px dashed #16a34a; padding: 4px 14px; border-radius: 10px; letter-spacing: 2px; }
+        الخلفية: #fff؛ الحدود: 2 بكسل متقطعة #16a34a؛ الحشو: 4 بكسل 14 بكسل؛ نصف قطر الحدود: 10 بكسل؛ تباعد الأحرف: 2 بكسل؛ }
 .status-ok { color: var(--ok); font-weight: bold; }
 .status-wait { color: #b45309; font-weight: bold; }
 .center-page { min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 16px;
-               background: linear-gradient(135deg, #e0e7ff, #f5f3ff); }
+               الخلفية: تدرج خطي (135 درجة، #e0e7ff، #f5f3ff)؛ }
 .auth-card { background: #fff; padding: 28px; border-radius: 18px; box-shadow: 0 10px 30px rgba(79,70,229,.15);
-             width: 380px; max-width: 100%; }
+             العرض: 380 بكسل؛ الحد الأقصى للعرض: 100%؛ }
 .auth-card h2 { text-align: center; margin-top: 0; }
 .auth-card .btn { width: 100%; padding: 12px; font-size: 16px; }
 @media (max-width: 600px) { .card { padding: 14px; } .brand { font-size: 17px; } }
@@ -385,18 +392,18 @@ LOGIN_HTML = '''
 <meta name="theme-color" content="#4f46e5">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
-<title>تسجيل الدخول - EduTeam Hope School</title>
+<title>تسجيل الدخول - مدرسة الأمل EduTeam</title>
 <style>{{ css|safe }}</style>
 </head>
 <body>
     <div class="center-page">
         <div class="auth-card">
             <h2>🏫 مدرسة الأمل</h2>
-            <p class="muted" style="text-align:center;margin-top:-6px">EduTeam Hope School</p>
+            <p class="muted" style="text-align:center;margin-top:-6px">مدرسة إيديو تيم هوب</p>
             {% if error %}<div class="notice err">{{ error }}</div>{% endif %}
             <form method="POST">
                 <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-                <label>اسم المستخدم</label>
+                <label>اسم مستخدم</label>
                 <select name="username" required>
                     <option value="">--- اختر اسمك ---</option>
                     {% for label, names in groups %}
@@ -407,7 +414,7 @@ LOGIN_HTML = '''
                 </select>
                 <label>كلمة المرور</label>
                 <input type="password" name="password" required>
-                <button type="submit" class="btn">دخول</button>
+                <button type="submit" class="btn"> إرسال</button>
             </form>
             <p class="muted" style="text-align:center;font-size:13px">نسيت كلمة المرور؟ اطلب من المدير إعادة تعيينها.</p>
             <p style="text-align:center;font-size:13px"><a href="/privacy">سياسة الخصوصية</a></p>
@@ -432,7 +439,7 @@ CHANGE_PW_HTML = '''
     <div class="center-page">
         <div class="auth-card">
             <h2>🔑 تغيير كلمة المرور</h2>
-            {% if forced %}<div class="notice info">يجب تغيير كلمة المرور المؤقتة قبل المتابعة.</div>{% endif %}
+            {% if force %}<div class="notice info">يجب تغيير كلمة المرور المطر قبل المتابعة.</div>{% endif %}
             {% if error %}<div class="notice err">{{ error }}</div>{% endif %}
             <form method="POST">
                 <input type="hidden" name="csrf" value="{{ csrf_token() }}">
@@ -445,8 +452,8 @@ CHANGE_PW_HTML = '''
                 <button type="submit" class="btn ok">حفظ</button>
             </form>
             <p style="text-align:center">
-                {% if not forced %}<a href="{{ url_for('dashboard') }}">العودة للوحة التحكم</a> | {% endif %}
-                <a href="{{ url_for('logout') }}">تسجيل خروج</a>
+                {% if not القسري %}<a href="{{ url_for('dashboard') }}">العودة للوحة التحكم</a> | {% نهاية %}
+                <a href="{{ url_for('logout') }}">تسجيل الخروج</a>
             </p>
         </div>
     </div>
@@ -463,9 +470,9 @@ TOPBAR_HTML = '''
     </div>
     <div class="nav">
         <a href="{{ url_for('dashboard') }}" class="btn light">🏠 الرئيسية</a>
-        {% if role == 'مدير' %}<a href="{{ url_for('admin_users') }}" class="btn light">👥 المستخدمون</a>{% endif %}
+        {% if role == 'مدير' %}<a href="{{ url_for('admin_users') }}" class="btn light">👥 مستخدمون</a>{% endif %}
         <a href="{{ url_for('change_password') }}" class="btn light">🔑 كلمة المرور</a>
-        <a href="{{ url_for('logout') }}" class="btn light">خروج</a>
+        <a href="{{ url_for('logout') }}" class="btn light"> </a>
     </div>
 </div></div>
 '''
@@ -477,10 +484,10 @@ DASHBOARD_HTML = '''
 <meta name="theme-color" content="#4f46e5">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
-<title>لوحة التحكم - EduTeam Hope School</title>
+<title>لوحة التحكم - مدرسة EduTeam Hope</title>
 <style>{{ css|safe }}</style>
 <script>
-    function enableEdit(prefix, day, loc, currentTeacher) {
+    دالة تمكين التحرير (البادئة، اليوم، الموقع، المعلم الحالي) {
         document.getElementById(prefix + '_day').value = day;
         document.getElementById(prefix + '_loc').value = loc;
         document.getElementById(prefix + '_teacher').value = currentTeacher;
@@ -494,13 +501,13 @@ DASHBOARD_HTML = '''
 
     {% if flash %}<div class="notice {{ 'err' if flash[0] == 'error' else 'ok' }}">{{ flash[1] }}</div>{% endif %}
 
-    {% if role in ['سكرتيرة', 'مدير'] %}
+    {% إذا كان الدور في ['سكرتيرة', 'مدير'] %}
 
     {% for prefix, title, schedule in schedules %}
     <div class="card">
         <h2>📋 جدول المراقبة (ديوتي) - {{ title }}</h2>
         <div class="tablewrap">
-        <table>
+        <جدول>
             <tr>
                 <th>اليوم</th>
                 {% for loc in locations %}<th>{{ loc }}</th>{% endfor %}
@@ -511,10 +518,10 @@ DASHBOARD_HTML = '''
                 {% for loc in locations %}
                 <td>
                     {% set current_t = schedule.get(day, {}).get(loc, '-') %}
-                    {% if current_t != '-' %}<span class="chip">{{ current_t }}</span>{% else %}<span class="empty">—</span>{% endif %}
+                    {% if current_t != '-' %}<span class="chip">{{ current_t }}</span>{% else %span class="empty">—</span>{% endif %}
                     <br>
                     <button type="button" class="btn small ok" style="margin-top:6px"
-                        onclick="enableEdit('{{ prefix }}', '{{ day }}', '{{ loc }}', '{{ current_t if current_t != '-' else teacher_list[0] }}')">تعديل ✏️</button>
+                        onclick="enableEdit('{{ prefix }}', '{{ day }}', '{{ loc }}', '{{ current_t if current_t != '-' else teacher_list[0] }}')"> ✏️</button>
                 </td>
                 {% endfor %}
             </tr>
@@ -532,7 +539,7 @@ DASHBOARD_HTML = '''
                     <select name="day" id="{{ prefix }}_day" required>{% for d in days %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select>
                 </div>
                 <div>
-                    <label>الموقع</label>
+                    <label> مقال</label>
                     <select name="location" id="{{ prefix }}_loc" required>{% for l in locations %}<option value="{{ l }}">{{ l }}</option>{% endfor %}</select>
                 </div>
                 <div>
@@ -540,12 +547,12 @@ DASHBOARD_HTML = '''
                     <select name="teacher" id="{{ prefix }}_teacher" required>{% for t in teacher_list %}<option value="{{ t }}">{{ t }}</option>{% endfor %}</select>
                 </div>
             </div>
-            <button type="submit" class="btn ok">💾 حفظ التعديل</button>
+            <button type="submit" class="btn ok">💾 حفظ التحديث</button>
         </form>
     </div>
     {% endfor %}
 
-    {% else %}
+    {٪ آخر ٪}
 
     <div class="card">
         <h2>📅 مناوباتي - {{ real_name }}</h2>
@@ -567,21 +574,65 @@ DASHBOARD_HTML = '''
 
     {% endif %}
 
-    {% if role == 'مدير' %}
+    {% if role == ' ' ' %}
     <div class="card">
         <h2>📨 إرسال رسالة</h2>
-        <form method="POST" class="box" style="margin-top:0">
+        <form method="POST" class="box" style="margin-top:0" onsubmit="return checkRecv()">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}">
             <input type="hidden" name="send_message" value="1">
-            <label>إرسال إلى (اضغط مطولاً لاختيار أكثر من اسم)</label>
-            <select name="receivers" multiple style="height: 140px;" required>
-                <option value="الكل">--- إرسال للجميع (ما عدا المدير) ---</option>
-                {% for u in users %}{% if u != user %}<option value="{{ u }}">{{ u }}</option>{% endif %}{% endfor %}
-            </select>
+            <label>إرسال إلى (اختر بالمربعات)</label>
+            <div class="actions" style="margin:6px 0 10px">
+                <button type="button" class="btn small ok" onclick="setAllRecv(true)">✔ اختيار الكل</button>
+                <button type="button" class="btn Small bad" onclick="setAllRecv(false)">✖ إلغاء الكل</button>
+                <span class="muted" id="recv-count">لم يتم اختيار أحد</span>
+            </div>
+            {% for group_label, names in recv_groups %}{% if names %}
+            <div class="recv-group">
+                <div class="recv-title">
+                    <label class="recv-item" style="border:0;background:none;padding:0">
+                        <input type="checkbox" class="group-box" onchange="toggleGroup(this)"> {{ group_label }} (الكل)
+                    </label>
+                </div>
+                <div class="recv-grid">
+                    {% for n in names %}
+                    <label class="recv-item"><input type="checkbox" name="receivers" value="{{ n }}" onchange="updateRecvCount()"> {{ n }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}{% endfor %}
             <label>نص الرسالة</label>
-            <textarea name="text" rows="3" maxlength="2000" required placeholder="اكتب رسالتك هنا..."></textarea>
+            <textarea name="text"rows="3" maxlength="2000" require placeholder="اكتب رسالتك هنا..."></textarea>
             <button type="submit" class="btn">إرسال الرسالة</button>
         </form>
+        <script>
+        function recvBoxes() { return document.querySelectorAll('input[name="receivers"]'); }
+        دالة syncGroups() {
+          document.querySelectorAll('.recv-group').forEach(function (g) {
+            var boxes = g.querySelectorAll('input[name="receivers"]');
+            var all = true;
+            boxes.forEach(function (b) { if (!b.checked) all = false; });
+            g.querySelector('.group-box').checked = boxes.length > 0 && all;
+          });
+        }
+        دالة تحديث عدد الاستقبالات () {
+          var boxes = recvBoxes(), n = 0;
+          boxes.forEach(function (b) { if (b.checked) n++; });
+          document.getElementById('recv-count').textContent = n؟ ('تم اختيار ' + n + ' من ' + boxs. length) : 'لم يتم اختيار أحد';
+          syncGroups();
+        }
+        دالة setAllRecv(v) { recvBoxes().forEach(function (b) { b.checked = v; }); updateRecvCount(); }
+        دالة toggleGroup(g) {
+          g.closest('.recv-group').querySelectorAll('input[name="receivers"]').forEach(function (b) { b.checked = g.checked; });
+          تحديث عدد الاستقبالات();
+        }
+        دالة التحقق من الاستلام () {
+          إذا لم يتم تحديد عنصر الإدخال "receivers" في المستند، فسيتم تنفيذ ما يلي:
+            تنبيه('اختر مستلماً واحداً على الأقل.');
+            أعد القيمة خطأ؛
+          }
+          أعد القيمة true؛
+        }
+        </script>
     </div>
     {% endif %}
 
@@ -591,79 +642,79 @@ DASHBOARD_HTML = '''
         <button type="button" class="btn ok" id="push-btn" style="display:none">تفعيل الإشعارات على هذا الجهاز</button>
     </div>
     <script>
-    (function () {
+    (وظيفة () {
         var card = document.getElementById('push-card');
         var status = document.getElementById('push-status');
         var btn = document.getElementById('push-btn');
         var key = card.dataset.key, csrf = card.dataset.csrf;
         function setStatus(t) { status.textContent = t; }
-        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-            setStatus('هذا الجهاز أو المتصفح لا يدعم الإشعارات. على الآيفون: ثبّت الموقع على الشاشة الرئيسية أولاً ثم افتحه منها.');
-            return;
+        إذا لم يكن ('serviceWorker' موجودًا في المتصفح) أو ('PushManager' موجودًا في النافذة) أو ('Notification' موجودًا في النافذة) {
+            setStatus('هذا الجهاز أو إصدار لا يدعم الإشعارات. على الآيفون: ثبّت الموقع على الشاشة الرئيسية المتعددة ثم فتحه منها.');
+            يعود؛
         }
-        function toBytes(b64) {
+        دالة toBytes(b64) {
             var pad = '='.repeat((4 - b64.length % 4) % 4);
             var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
             var out = new Uint8Array(raw.length);
             for (var i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
-            return out;
+            العودة للخارج؛
         }
-        function post(url, body) {
+        دالة post(url, body) {
             return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf}, body: JSON.stringify(body)});
         }
-        function refresh(reg) {
+        دالة التحديث(reg) {
             reg.pushManager.getSubscription().then(function (sub) {
                 btn.style.display = 'inline-block';
-                if (sub && Notification.permission === 'granted') {
-                    btn.textContent = 'إيقاف الإشعارات على هذا الجهاز';
+                إذا كان (الفرع && إذن الإشعار === 'ممنوح') {
+                    btn.textContent = 'إيقاف التنبيهات على هذا الجهاز';
                     btn.className = 'btn bad';
                     btn.dataset.mode = 'off';
                     setStatus('✅ الإشعارات مفعّلة على هذا الجهاز.');
-                } else {
+                } آخر {
                     btn.textContent = 'تفعيل الإشعارات على هذا الجهاز';
                     btn.className = 'btn ok';
                     btn.dataset.mode = 'on';
                     setStatus(Notification.permission === 'denied'
-                        ? '⚠️ الإشعارات محظورة لهذا الموقع من إعدادات المتصفح.'
-                        : 'فعّل الإشعارات لتصلك رسائل المدير فور إرسالها.');
+                        ؟ '⚠️ الإشعارات محظورة هذا الموقع من إعدادات المتصفح.'
+                        : 'تفعيل الإشعارات لتوجيه رسائلك إلى الإدارة فور إرسالها.');
                 }
             });
         }
         navigator.serviceWorker.ready.then(function (reg) {
-            refresh(reg);
+            تحديث(reg)؛
             btn.addEventListener('click', function () {
-                if (btn.dataset.mode === 'off') {
+                إذا كان وضع مجموعة بيانات الزر هو "إيقاف" {
                     reg.pushManager.getSubscription().then(function (sub) {
-                        if (!sub) { return; }
+                        إذا لم تنجح العملية الفرعية، فقم بالخروج.
                         return post('/push/unsubscribe', {endpoint: sub.endpoint}).then(function () { return sub.unsubscribe(); });
                     }).then(function () { refresh(reg); });
-                    return;
+                    يعود؛
                 }
                 Notification.requestPermission().then(function (perm) {
-                    if (perm !== 'granted') { refresh(reg); return; }
+                    إذا لم تكن صلاحية الوصول مُمنوحة، فسيتم تحديث السجل والخروج من العملية.
                     return reg.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: toBytes(key)})
                         .then(function (sub) { return post('/push/subscribe', sub.toJSON()); })
-                        .then(function (r) {
-                            if (!r.ok) { setStatus('تعذّر حفظ الاشتراك. حاول مرة أخرى.'); return; }
-                            refresh(reg);
+                        ثم(دالة (r) {
+                            if (!r.ok) { setStatus('تعذّر حفظ الاشتراك. حاول مرة أخرى.'); يعود؛ }
+                            تحديث(reg)؛
                         });
-                }).catch(function () { setStatus('تعذّر تفعيل الإشعارات على هذا الجهاز.'); });
+                }).catch(function () { setStatus('تعذّر تفعيل التنبيهات على هذا الجهاز.'); });
             });
         });
     })();
     </script>
 
     <div class="card">
-        <h2>📥 الرسائل</h2>
+        <h2>📥 تخلص</h2>
         {% if user_messages %}
             {% for m in user_messages %}
             <div class="msg">
-                <div class="meta"><b>من: {{ m.sender }}</b> &nbsp;|&nbsp; إلى: {{ m.receivers | join('، ') }}</div>
+                <div class="meta"><b>من: {{ m.sender }}</b>  |  إلى: {{ m.receivers | join(', ') }}</div>
                 <p>{{ m.text }}</p>
             </div>
             {% endfor %}
-        {% else %}
-            <p class="muted">لا توجد رسائل حالياً.</p>
+        {٪ آخر ٪}
+            <p class="muted">لا توجد رسائل حاليا.</p>
         {% endif %}
     </div>
 </div>
@@ -679,7 +730,7 @@ USERS_HTML = '''
 <meta name="theme-color" content="#4f46e5">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
-<title>إدارة المستخدمين - EduTeam Hope School</title>
+<title>إدارة المستخدمين - مدرسة الأمل EduTeam</title>
 <style>{{ css|safe }}</style>
 </head>
 <body>
@@ -689,18 +740,18 @@ USERS_HTML = '''
 
     {% if notice %}
     <div class="notice ok">
-        تم إعادة تعيين كلمة مرور <b>{{ notice.name }}</b>.<br>
-        كلمة المرور المؤقتة: <span class="temp">{{ notice.password }}</span><br>
-        <small>تظهر مرة واحدة فقط. أعطها للمستخدم، وسيُطلب منه اختيار كلمة جديدة عند الدخول.</small>
+        تم إعادة تعيين كلمة مرور <b>{{ notification.name }}</b>.<br>
+        كلمة المرور المؤقتة: <span class="temp">{{ notification.password }}</span><br>
+        <small>تظهر مرة واحدة فقط. أعطتها المستخدم، وطرق اختيار منه كلمة جديدة عند الدخول.</small>
     </div>
     {% endif %}
 
     <div class="card">
         <h2>👥 إدارة المستخدمين</h2>
-        <p class="muted">إذا نسي أحد كلمة المرور، اضغط "إعادة تعيين" وستظهر لك كلمة مؤقتة تعطيها له.
-        ({{ waiting }} مستخدم لم يغيّر كلمته الأولى بعد)</p>
+        <p class="muted">إذا نسي أحد كلمة المرور، اضغط " إعادة تعيين" وستظهر لك كلمة مؤقتة تعطيها له.
+        ({{ انتظار }} مستخدم لم يغيّر كلمته الأولى بعد)</p>
         <div class="tablewrap">
-        <table>
+        <جدول>
             <tr><th>الاسم</th><th>الدور</th><th>الحالة</th><th></th></tr>
             {% for u in rows %}
             <tr>
@@ -712,9 +763,9 @@ USERS_HTML = '''
                     <form method="POST" action="{{ url_for('admin_reset') }}" style="display:inline">
                         <input type="hidden" name="csrf" value="{{ csrf_token() }}">
                         <input type="hidden" name="username" value="{{ u.name }}">
-                        <button type="submit" class="btn warn small">إعادة تعيين</button>
+                        <button type="submit" class="btn تحذير صغير"> إعادة تعيين</button>
                     </form>
-                    {% else %}<span class="muted">أنت</span>{% endif %}
+                    {% else %}<span class="muted">ك</span>{% endif %}
                 </td>
             </tr>
             {% endfor %}
@@ -729,19 +780,19 @@ USERS_HTML = '''
 
 
 
-# ----------------------------------------------------------------------
-# تطبيق ويب (PWA) + متطلبات Google Play
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
+#تطبيق ويب (PWA) + متطلبات Google Play
+----------------------------------------------------------------------
 _ICON_192 = """
-iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvvtQAAAVQElEQVR42u2d25cURZ7HvxEZVXmr7qYVZQHHkVVhdWC9Igyo
+iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAIAAADdvtQAAAVQElEQVR42u2d25cURZ7HvxEZVXmr7qYVZQHHkVVhdWC9Igyo
 yEVQwbvj4IN7zv4Lu2ef5px937P7sE/7MmcvZ/asl9VRHBiUiyjYXAURxFlEBHUQVECgu/JamRH7kNVV1d1V1ZVZ96rIB0+T
-aVVkRn7q94lfZGQEefrR71BuI6i4kVj7RdyPkHiliCacc+khQZpVM9EhEfcjpMn1H+taCO0ueiDp6SR6IMB6O/YkuJbW0EMm
+avvkRn7q94lfZGQEefrR71BuI6i4kVj7RdyPkHiliCacc+khQZpVM9EhEfcjpMn1H+taCO0ueiDp6SR6IMB6O/YkuJbW0EMm
 nn/j6RGNr5mp9ACgvW0udGrsQbNjT0voASZGIGmu8cDQzeZqduyZePJMmmvKIWmuqrFn4j+oNJc0VwJzFQ4xaS5prgTmKhxi
 0lzSXAnMVdioNJc0VwJzlWlES3NJc9VurmoASXNJc01rrooKk+aS5qrFXOUjkDSXNFeN5irsZ90be6S52miuwn4qzSXNlcBc
 pFRh0lzSXHHNVWwDSXNJcyUwV8UsTJpLmitWKaxd9EhzdbW5KgIkzSXNFeurqDSXNFc9pbAW0yPN1RvmKhxi0lzSXPWUQqW5
 pLnqKYVJc0lz1VMKk+aS5qqnFCrNJc1VTylMmkuaq55SmDSXNFc9pVBpLmmuekph0lzSXPWUwqS5pLmSlyKqdCRKc0lzTUcP
 Yg4ok+aS5pr8/ayNsUeaq3vNNSULk+aS5opPD2obUCbNJc1V8afFWh97pLl6wFxlFCbNJc0Vl57qA8qkuaS5qv20qs9QJs0l
-zTVN7MkrTJpLmisxPWX7gaS5pLmmN1clgKS5pLlqjT2TszBpLmmuuPSURiBpLmmuGOaaBJA0lzRX7NiD8ZnqpbmkuRLSAxAm
+zTVN7MkrTJpLmisxPWX7gaS5pLmmN1clgKS5pLlqjT2TszBpLmmuuPSUriBpLmmuGOaaBJA0lzRX7NiD8ZnqpbmkuRLSAxAm
 zSXNlcBchYMM0lyVC1EoAHAuzVUm9uTbQNJcZTdKCQEcWwgO3SSEgofSXGUOMmmuyegoBAKOJXiIhfenjQz5ZMQLAhgZQhUI
 PqW6+8xc0y910KfmIqAUPIR1TSgM9yxTH33OuHuZSgi+OO7vesc58L5rj3HDpCwFziFEX5uruPNXa87Xb66uXtWWEFCKIIBj
 CcOk9z2ornzKWLg4nT9BkW9If/NlsO1/rSMj3tWLoZ6hLAXBIXgfmYuUO1gVoF43V4ROLgfH4kPXKfcu157YaNwyPxVxIwRo
@@ -761,7 +812,7 @@ glHnmKsiQB1irigz91zhe+KG2cqKx411z5vDM2lbOnVa18oe7+e8eom//4Z9cIf7/TdBWpvaddR+c8UG
 jz32gvnQuoTPzLsVo/FWtmOJkS3Orjft82dDxqCZJGqDd4K5ygPUXnMpFALRaHax4K/Tjz5rLnlE0w3SJ+hUwshzxNE93s7X
 7dPHc4RCzxAyqeuoHeYqfCQPUHvNRRWAw7YEY5i/KL32WWPZGj3Cpd/QqYSREDi0w/1os3PysB8G0EyiRDl/m8xVbGxUB6jZ
 9CgKwhCOxdNpsmixuuElc1HJM/O+RacSRgD+dMjf/qp98ojv2ULPEIUiDNthrlKFtcVchCAIYI9xc4AuX6Otfc687c7WPTPv
-1px//OHMt18EO16zPt7hWWPcGKAKm2bFnIabq/j3xsQdiaIuesIQgzPoyvX60pX6zbcyiU4CjM6dDo7sckc2O2NXhaJUjxYN
+1px // OHMt18EO16zPt7hWWPcGKAKm2bFnIabq/j3xsQdiaIuesIQgzPoyvX60pX6zbcyiU4CjM6dDo7sckc2O2NXhaJUjxYN
 Nlex+dGudo8QQk1j3vzUTbew0qqRW/WNkGK30Nxb2c0LUimVQIga30RuTMZdPQK1JueiBDlfuI6YczNb+5y56ik9M9AvuXr9
 jaErP/I979i733YuXwhVnaTTRMQMP/XHnnwrduFf/n1MFBrWW6gwohkkO8oPj7iHPnRHr/JZc1hmkBICzgEhMRpHh+flTih+
 +DY89UnOGKCUkutnKV+dCKKXG8vn2NF/mkbPZIBa/5xLCCiM6AbJjvLjB729293Rq/zG2crAjDxGor8x4gV0CC6dD7f+l/3b
@@ -771,15 +822,15 @@ mUGyV0R+nG6FobpNzbmm7mfopNmfomhECAaGKA+xd5tz4H33rqXq+o3mwsUqbfT7XB3W0smPNYsu808f
 hwjn4CGEmD5Ra4G5ChvrzDeReQgCZIaoEPh0n3fsgHfrHaknNppLV+tRGtJLGBXSq2iw5aGd7p53nC8+8XkIffxF6TpHKjYw
 9kzaWJvNVbWnPKo1I0MAnDmZ+9ffXF3wmv3wE/pDj+taTzxkLaBDFOQ8cXSPt+0V+6vPfKoQ3SQE4CFEjEpunbmmAaij5i2M
 njyrOtUNnDmZO3nMf/d1a92vzGWPagMzurjrKHpBlihwLTGyxfngLef8mRxVSGaIQpRBp8H0NOhWso4yV7WPcHBA1YlukIsX
-wv/452t/+O/sw+v1tc8Zwzco3Rh+qIIrF/nePzr7tjrnTgeqRozBPDrxndL02FOrwjp2xt1Cl1oIpNIkrZGxa+LN32Z3b3aW
+wv/452t/+O/sw+v1tc8Zwzco3Rh+qIIrF/nePzr7tjrnTgeqRozBPDrxndL02FORwjp2xt1Cl1oIpNIkrZGxa+LN32Z3b3aW
 rdWffNkcGu6mDM3Oim2vWLvfdn76IVR1MjBMBYcIKwbmKpVJKvDQVHMVfwYda67SI2RK04GHYAwzhqmTFZv+c+zzz8NrDjy/
 C9Dxc7jm4LPj4e//LetaYnCYptKkOLJHNCAqtMBchUOs081VpW0jEIZQGAZmUEKRdfCTC1PHoAkt3YnoeDmM2cjaSKkAkBki
 0XAoJJ+vGc1+UjFtwazDzTVtKWK80UAJCGC5sF3oKgYMGFqnoOP6GLVgu/m3vQoTFEVdPnXQ0zZzletI7IlVTqK35W0Ptgct
 jUEThtrOBM12MWbD8SAixMmElytEy+hp2kdY58zXnJweUR4jz8ePPtIMgyYyeksxEgK2h1ELrgeQfHSsnBo095Y3w1wTszDR
 C+tzlf0WAuQCXLqKUQsZHRkjP9VmU9HJOhi14AdA1ffXopEWImZlNnt8T9y7z7rdXNM+GoqeO+YC/DSKURsDBgZ0KE3oOQo5
 LAdjNvwcCCm/HnaZsxexokJ7egsr/3oJ63ZzEVJTHI7uaMhxZRSjFkwNQxkwpWHojNkYs5ELQEnNQwYaYa5qYayZ5iqIi3W1
-uUicuhDjE40LgVELlgNDx4ABNZUcnVyAMRuWiyAAoWB0+oiYtAlMGvLTbWDsQbwBZR2ZcyXeordgxyxkbZgaBk2oMbuO/BzG
-HFg2Qg5K81/YDHoS1EELzIX4A8o6LueqB6zoOyLXZB1YLrQ0hjLQ1ek/6+UwmoXlQTQIHdSz2lcbzDUlC+ulNZETbBFGjg/n
+uUicuhDjE40LgVELLgNDx4ABNZUcnVyAMRuWiyAAoWB0+oiYtAlMGvLTbWDsQbwBZR2ZcyXeordgxyxkbZgaBk2oMbuO/BzG
+HFg2Qg5K81/YDHoS1EELzIX4A8o6LueqB6zoOyLXZB1YLrQ0hjLQ1ek/6+UwmoXlQTQIHdSz2lcbzDulC+ulNZETbBFGjg/n
 J+hpZAyYevnvtz1k7Xx/YDTEHfWhIxKZq7H0JI49E/uBuspczZBafr5OH46H0SwGMzC0YiZlexjNwvEB0chZ9Eidx9thLpTp
 B+obc9WSrBECP8DFK2AMQyYoxWgWfpDvSm5s8aRyAOuo3sIq9c/61lzTYhSGuDw6nuuRxhfdkNFhkVFa2WqePgJ1l7lEzGQ+
 HkZNJjVWtVXsRxWx679+cxXV3wXmEkmx7sItgbni138DzFU+AnWduUgPAZRgXHPCW9YIcxU+Qrs35+q5N8NIEwNJo81V+AiV
@@ -800,11 +851,11 @@ g0a/zxWz/knz6p/8zcoLPWOuaqoex8hzxNz5qWXPGItW6JoJ10qOUbQqip6Ba0Xo2Oe/DFiKpPUJ6AA9
 hYBQ+I4IcmLu7alfPm0uWqElwChCRzPAOY7vckfesL4/nWMpOhWdXjVX8eZOBag3zFW945FQ5BwR5DDndvbLp2NEozw6JsIA
 pw55+9+yzxz1FQZVp4LHGaTc5eYq3t9JAPWYuTCd1KJoNOf2VAEjJ1t+fTvBgYnonP3UB4FmEKB8V14Pm6t8G6hXzRVDas+Y
 d63WWAquVcRIcAhANSD4BHRUgxBA8PjzFna/ucoA1PPmqklqvrj1HnXZ88b8B1SF5TFSDVCKrz/LffC77JmjeXQAgFf8yp43
-V+EQ6yZ6Jv6rkWPQBESIlErSGjl73D97zJ93d3rZc8b8xaqSwjcncvvfsk/ud8McVJNEMald63N1iLlQOsVdx44tbJ65yuwX
+V+EQ6yZ6Jv6rkWPQBESilErSGjl73D97zJ93d3rZc8b8xaqSwjcncvvfsk/ud8McVJNEMald63N1iLlQOsVdx44tbJ65yuwX
 ECJSFQFw9ph/5qj/V0tULUM+3+MGPrQMYenSgWAdN+Nu9cyxGfSg6gxlnWau5sSeKd8fIRKtiHjqY09wqCZJqfml7JOdQLtm
 f2pB/bN+NleVlQYijKJmMufgE65RmmsagPrLXFU+EuVftXxfv5mrCkB9aq5m3PIeNlclgPrdXJ22JnLHmquwUWmu2qKCNFf5
 jzBpLmmueuqfSXNJc9Xz66XSXNJcdcR+wqS5pLkS04MYM5RJc0lzTaEHZV9tluaS5qqRHtQ0Q5k0lzRX8pnqpbmkuSrEnskK
-k+aS5opLT9UBZdJc0lw1lMKkuaS5ksWevMKkuaS5EtNTrh9ImkuaK04pTJpLmitZ7JmchUlzSXPFpackAklzSXMlKoW1KPZI
+ك+aS5opLT9UBZdJc0lw1lMKkuaS5ksWevMKkuaS5EtNTrh9ImkuaK04pTJpLmitZ7JmchUlzSXPFpackAklzSXMlKoW1KPZI
 c/WWuQr7aaEAaS5prrj0AGDNpUeaq0fNVfj1MkhzSXMlij3R91NpLmmuxPQgyZKX0lzSXKJCFibNJc0Vt/6pNJc0Vz31z9p6
 9tJc3WquMgBJc0lzJah/2jB6pLn6yVyobYYyaS5prmnqn0lzSXPVU/9Umkuaq576Zy08e2mu3jFXNYCkuaS5aq9/mpAeaa7+
 Nlf5CCTNJc0VN/az2LFHmkuaq2Q/leaS5kpMD1D7gDJpLmmucvuZNJc0V2J6UKkjUZpLmqvGE2aNPntprr4wV0WApLmkuWKd
@@ -812,7 +863,7 @@ MJXmkuaqp2aYNJc0Vz2lMGkuaa56aoZKc0lz1VMzTJpLmqueUpg0lzRXPddCpbmkueq5FtZp9PRS7Kn1
 0wPg/wGZ56tOhXfNVQAAAABJRU5ErkJggg==
 """
 _ICON_512 = """
-iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAIAAAB7GkOtAAAx60lEQVR42u3da7AcZ33n8f/zdM/MmZmjows44lILJGuD8UVO
+iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIACAIAAAB7GkOtAAAx60lEQVR42u3da7AcZ33n8f/zdM/MmZmjows44lILJGuD8UVO
 LFnGNuZq2YVsLUEKAVOb1N6qUrzYVO3lzW7V1l5eprZ4Qap2q7ZCUhVMBLZkiEmMfJVABEuKJWxZMhgj74YgYWywpHPO3Gf6
 2RczZ87MnLl1T89M99Pf/yuwpOf0mZ7+/Lpn/s/zqE/vuSgTl4rACAEHMXM/EjXPF8RE+NTM4DBMkIGtekHM3H8XlezLf77v
 MaUlGsc6n4qq/tEpFZlBIvL72fSCRET/BF/+837zG3G59+fen3t/7v2590/avX/zFXDnfqzc+0fh10/WvX+c9efen3v/EH99
@@ -820,11 +871,11 @@ Pd/fdj6DRFj/WRyJsfrkjhwk5vqHcI8ZGf2TevnLvC9/NWkAoD/6oz/6o3+s9Q8YAOiP/uiP/ugfd/2D
 7wBAf/RHf/RHfzv09xcA6I/+6I/+6G+N/j4CAP3RH/3RH/1t0n/cAEB/9Ed/9Ed/y/QfKwDQH/3RH/3R3z791cgAQH/0R3/0
 R38r9R/xBID+6I/+6I/+tuo/LADQH/3RH/3R32L9BwYA+qM/+qM/+tutf/8AQH/0R3/0R3/r9e8TAOiP/uiP/uifBP17AwD9
 0R/90R/9E6J/VwCgP/qjP/qjf3L0Xw8A9Ed/9Ed/9E+U/q0AQH/0R3/0R/+k6S8iGv3RH/3RH/0TqL9Msicw+qM/+qM/+sdX
-/xACAP3RH/3RH/3jqP+kAYD+6I/+6I/+MdV/ogBAf/RHf/RH//jqHzwA0B/90R/90T/W+gcMAPRHf/RHf/SPu/5BAgD90R/9
+/xACAP3RH/3RH/3jqP+kAYD+6I/+6I/+MdV/ogBAf/RHf/RH //jqHzwA0B/90R/90T/W+gcMAPRHf/RHf/SPu/5BAgD90R/9
 0R/9LdDfdwCgP/qjP/qjvx36+wsA9Ed/9Ed/9LdGfx8BgP7oj/7oj/426T9uAKA/+qM/+qO/ZfqPFQDoj/7oj/7ob5/+amQA
 oD/6oz/6o7+V+o94AkB/9Ed/9Ed/W/UfFgDoj/7oj/7ob7H+AwMA/dEf/dEf/e3Wv38AoD/6oz/6o7/1+vcJAPRHf/RHf/RP
 gv69AYD+6I/+6I/+CdFfRNwQfwb6oz/6oz/6x0V/CWVPYPRHf/RHf/SPnf4i4nLvj/7oj/7on0D9Q3sCQH/0R3/0R/946R9O
-AKA/+qM/+qN/7PQPIQDQH/3RH/3RP476TxoA6I/+6I/+6B9T/ScKAPRHf/RHf/SPr/7BAwD90R/90R/9Y61/wABAf/RHf/RH
+AKA/+qM/+qN/7PQPIQDQH/3RH/3RP476TxoA6I/+6I/+6B9T/ScKAPRHf/RHf/SPr/7BAwD90R/90R/9Y61/wABAF/RHf/RH
 /7jrHyQA0B/90R/90d8C/X0HAPqjP/qjP/rbob+/AEB/9Ed/9Ed/a/T3EQDoj/7oj/7ob5P+4wYA+qM/+qM/+lumv7SXg0Z/
 9Ed/9Ef/5OivxnkCQH/0R3/0R3/77v1lZACgP/qjP/qjv336q5EBgP7oj/7oj/4W6z8wANAf/dEf/dHfbv37BwD6oz/6oz/6
 W69/nwBAf/RHf/RH/yTo3xsA6I/+6I/+6J8Q/aU9DyDIz0B/9Ed/9Ef/OP8uQTeEQX/0R3/0R/+Y/y4u9/7oj/7oj/4J1D/Q
@@ -834,14 +885,14 @@ j/7oj/7on0D9pb0cNPqjP/qjP/on6N3e+wSA/uiP/uiP/sm4/KUrANAf/dEf/dE/YZe/Rn/0R3/0R/9k
 +fd+CYz+6I/+6I/+Sbn8u9tA0R/90R/90T85L4iL/uiP/uiP/km792+WRn/0R3/0R/8E6t8KAPRHf/RHf/RPmv4iotEf/dEf
 /dE/gfqLv03h0R/90R/90d8W/UMIAPRHf/RHf/SPo/6TBgD6oz/6oz/6x1T/iQIA/dEf/dEf/eOrf/AAQH/0R3/0R/9Y6x8w
 ANAf/dEf/dE/7voHCQD0R3/0R3/0t0B/3wGA/uiP/uiP/nbo7y8A0B/90R/90d8a/X0EAPqjP/qjP/rbpP+4AYD+6I/+6I/+
-luk/VgCgP/qjP/qjv336q5EBgP7oj/7oj/5W6j/iCQD90R/90R/9bdV/WACgP/qjP/qjv8X6DwwA9Ed/9Ed/9Ldb//4BgP7o
+لوك/VgCgP/qjP/qjv336q5EBgP7oj/7oj/5W6j/iCQD90R/90R/9bdV/WACgP/qjP/qjv8X6DwwA9Ed/9Ed/9Ldb//4BgP7o
 j/7oj/7W698nANAf/dEf/dE/Cfr3BgD6oz/6oz/6J0T/rgBAf/RHf/RH/+Tovx4A6I/+6I/+6J8o/VsBgP7oj/7oj/5J019E
 NPqjP/qjP/onUH/xsxw0+qM/+qM/+tuj//gBgP7oj/7oj/5W6T9mAKA/+qM/+qO/bfqPEwDoj/7oj/7ob6H+IwMA/dEf/dEf
 /e3Uf3gAoD/6oz/6o7+1+g8JAPRHf/RHf/S3Wf9BAYD+6I/+6I/+luvfNwDQH/3RH/3R3379NwYA+qM/+qM/+idC/54AQH/0
 R3/0R/+k6N8ZAOiP/uiP/uifIP3VWgCgP/qjP/qjf7L0bz4BoD/6oz/6o3/i9BcRF/3RH/3RH/2Tp7+SQRPB0B/90R/90d/i
 e/9mafRHf/RHf/RPmP6qfwCgP/qjP/qjfxL07w0A9Ed/9Ed/9E+I/tL+EjiUn4H+6I/+6I/+cdFf/OwJjP7oj/7oj/726C8i
 Lvf+6I/+6I/+CdQ/tCcA9Ed/9Ed/9I+X/uEEAPqjfxz1V0q0FqVEO+iP/knUP4QAQH/0j53+SonjSL1mCiumXpPCslFatJ7C
-kaA/+kdYfxmyFAT6o799+mtHjCf1mpSK3jXvdO5/MP/u97lHHimcPVk1nmSyynHFeGIM+qO//fpPFADoj/7R13+dfi0iUlg2
+كا/+kdYfxmyFAT6o799+mtHjCf1mpSK3jXvdO5/MP/u97lHHimcPVk1nmSyynHFeGIM+qO//fpPFADoj/7R13+dfi0iUlg2
 6QW1eZve/6/yew7k85uUiPz2nZmzJyt/e7Bw4eXayhUvs6DTGfG6YwD90d8+/UVEffaeS+iP/hbf+zfpL64apeXm3ekHvpC/
 9qZ0NqdExGuIKFFKlBIRuXrZO/bt4pOHSm9cqmfzOp1uxQD6o7+V+gcMAPRH/xjc+ytxHDFei/4du9Of+nz+lg9lmn/Da4jS
 LfdFxPPWY6Cw4j31aPHpw6VfXqrnOmIA/dHfMv2DBAD6o3/E9W+299SrUlj10hl18+703jX6jRFjRKv+P8MY8TxxnFYMPP1o
@@ -858,7 +909,7 @@ owdGf/SfzmH0dnY+mL/l9lZnZ0zpHxIDPzrTmjqQXdTp9MDNZ9Af/Weg/9gBgP7oH/ZhDO/s7PwUxYLa
 f/Sfsf4ion5/5FIQ6I/+oR5GxDs7pxoDnVMHnmn2jPpabhr90T/UIxkVAOiP/uEdRow6O6dXvVMHDhWf/VZp+S2vWhm13DT6
 o3/YRzI0ANAf/UM6jJh2ds4mBkoFc+F89fGvjdsziv7oH9aRDA4A9Ef/MA7Dgs7OqcZAz3LTR8aYOoD+6B/WkQwIAPRH/4nL
 sa6zc2o50LvcdDsGMlnluOvNQmG9YOiP/oMDAP3Rf7Jqfp5TsrSzc3rV2Sz00onKdw4WLrxcW7niZRZ0OiOeF9Am9Ef/sQMA
-/dE/8L9d6+ysJqCzczYxsHzZO/ZY8elD4fSMoj/6Dw0A9Ef/oPS3OzuXktTZOZsYaPaMPrO260Aq6HLT6I/+gwMA/dE/MP1r
+/dE/8L9d6+ysJqCzczYxsHZZO/ZY8elD4fSMoj/6Dw0A9Ef/oPS3OzuXktTZOZsYaPaMPrO260Aq6HLT6I/+gwMA/dE/MP1r
 nZ33/V7uY8nr7Jxe9fSMtmMgwHLT6I/+gwMA/dHfZ23s7Lw32Z2ds4mB1aved79d+smL1TN+lptGf/SfKADQH/076e/p7LyX
 zs7ZxoCsfUt8boypA+iP/oMD4JOX4nrm0H/m+ves2Xk9nZ1zioH2S90TAxuXm0Z/9J8oANAf/WXDmp3309k579rYM3puw3LT
 6I/+wy//EQGA/gnXXynRjjKeWaefzs4Ix8CPzlSfe7L8+s/quUWdHt4ziv6J13/EEwD6J1n/ZntPrSqFVS+dUT308x1vZGOg
@@ -902,7 +953,7 @@ HUwdoAJVz3yuTvqXtmnPkz5L86N/3PSfNADQPzqn3xhpNJTrypZtevkt79BXVtMPqZt3p5k6QAWgv3M+
 wdQBagPfnumlv2s+1wb6FfpboX/AAED/aOqv+t3TdcbAiyerO+/OXL8j/dF9WaYOUO2mfq166e+azyXob6f+QQIA/eOi/8YY
 MCKnj1dOPlM+8nDxngNZpg4kmf7OTVounK898VDhfPcmLWasyx/9402ZG/zHoH8c9O+NgbWpA1/705WnD5e6YoCpA0miv71J
 y7FvlpYve9Xy6E1a0N8y/f0FAPrHV/+uGOiYOrAeA5/J5Zew3/Jqfv/f1dl5qbVJS2ppxCYt6G+f/j4CAP0t0L/zNrA9dWDl
-qvdXX1559lulO/cs3LgrfcOtaa2VUqFuPErN/cZfRIloLcVV8+wjxaOH1zo7x9ukZb76K/Sf2iCu7x+D/jHXv08MbNPLb3mP
+qvdXX1559lulO/cs3LgrfcOtaa2VUqFuPERN/cZfRIloLcVV8+wjxaOH1zo7x9ukZb76K/Sf2iCu7x+D/jHXv08MbNPLb3mP
 /vnq4T+Tz//bpU//i7xj+ErAqlIixsiLz1X/4r9dufwrL5sf1dkZpXt/g/5TG0T7P/3ob4P+nS60dh24RjtallfM5ZL84tdS
 qsCmJVWqyK8uy1tlOfOD6q9fb2y5RjuuNBpijPi//Odx0aH/1F5VF/2TrH/X00BdRMRxRURKZanWZSEjm/OSzUBojOm/WpBy
 Rep12ZyRbE65KdWoj0W/ROZz/1AGQ/++5aI/+kt3Eoi0ukLLFSlVJLcgCylZzInDl8QxpF9ElBLXEWl2+JhA7xD0t0t/NTIA
@@ -956,7 +1007,7 @@ k8JV7/oPZT76ufy1t6at3HNmAP2SyevA9KM/+k8+SAgBgP7oP9EgShxHSqtGRK7bmb5rf/66nfbEwGD6
 AwD90T+UQbq2HrMiBjbS/9PTVWMk2/rAR833HYL+Cb/3DyEA0B/9wx3Ekhjo3Z63Rf9CXun1D3zUHN8h6M+9f+tvBg4A9Ef/
 KQ3SjgGt5Lqd6TvjEwOd2/P++Lnq8W8ULpxp0a+6mjvRH/3nr3/wAEB/9J/2IE3o208DEY+Bnu15Tx8pfv/hQrlje14VxmuD
 /ugfov4BAwD90X/qTm14GohsDGxct/n57xR7tudFf/SPoP5BAgD90X/2g0QzBvrQ/3hx4/a86I/+0dTfdwCgP/rPcZDoxMBw
-+jtXcEN/9I+s/v4CAP3RPwqDzDcGxqcf/dE/4vr7CAD0R/9IDTL7GPBFP/qjf/T1HzcA0B/9oznIxnkD167FgKjQVpn2Sz/6
++jtXcEN/9I+s/v4CAP3RPwqDzDcGxqcf/dE/4vr7CAD0R/9IDTL7GPBFP/qjf/T1hzcA0B/9oznIxnkD167FgKjQVpn2Sz/6
 o38s9B8rANAf/SM+SDMGKgWjlFy7M33Xgfw//Z10ox7OZgM92/OOpB/90T82+o8MAPRH/1gMojqeBoyRmz+y8M/+eGnTNlUp
 BY+Bnu15x6Ef/dE/RvqPeAJAf/SP3SBaizFSKZpN2/Rt9+d27c1t8b8DZc/2vKePFMfcnhf90T9G+g8LAPRH/1gO0lziSkuj
 1tpzZtfe3G33jxsDG7bnLfx47O150R/946X/wABAf/SPr/6t/76250xzB8qRMdB38U4Ze3te9Ef/2OnfPwDQH/3jrr+vGBi0
@@ -993,16 +1044,16 @@ CamS8NuGLCb6oz/vdgv0T/DJdVsjmAS/6PMPfzXnF8Qk+4oyKtHEzP/eXyX78p/nCDpG+kenbHpBonPv
 LjWv75WvxGYAAAAASUVORK5CYII=
 """
 _ICON_MASKABLE_512 = """
-iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAIAAAB7GkOtAAAty0lEQVR42u3dbaxkxZ3f8X9Vn9v3dvd9YGaN2cVJsIXRWowZ
+iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIACAIAAAB7GkOtAAAty0lEQVR42u3dbaxkxZ3f8X9Vn9v3dvd9YGaN2cVJsIXRWowZ
 x8GMwbEDNgxaj2FtM6wD1vpF/CpSks2LRIoUKYryat+ttGuvkpWSKFEgbPCM14ttFlgGbA/YM8DgAB4gXkCxtWDwBGbm3tvd
 t5+q8qL79u3u6YdzTp/uPlXnW5L9wp57+pyuPp9fne5/VakvHn5Tpm4qBUeIeRC78DNRi3xDbIq7Zg6nYeMc2Ks3xC78WlS2
 b//FfsaUlnSc62JaWvVPT1OpOUhKrs+nNyQl+mf49l/0h99KwNifsT9jf8b+jP2zNvZvvwPBws+VsX8aLj9bY3+X9Wfsz9g/
 wcvXi73axRwkxfrP40ys15078SCO65/AGDM1+mf19pdF3/5q2gBAf/RHf/RHf6f1jxkA6I/+6I/+6O+6/nECAP3RH/3RH/09
-0D9yAKA/+qM/+qO/H/pHCwD0R3/0R3/090b/CAGA/uiP/uiP/j7pHzYA0B/90R/90d8z/UMFAPqjP/qjP/r7p7+aGADoj/7o
-j/7o76X+E54A0B/90R/90d9X/ccFAPqjP/qjP/p7rP/IAEB/9Ed/9Ed/v/UfHgDoj/7oj/7o773+QwIA/dEf/dEf/bOg/2AA
+0D9yAKA/+qM/+qO/H/pHCwD0R3/0R3/090b/CAGA/uiP/uiP/j7pHZYA0B/90R/90d8z/UMFAPqjP/qjP/r7p7+aGADoj/7o
+ي/7o76X+E54A0B/90R/90d9X/ccFAPqjP/qjP/p7rP/IAEB/9Ed/9Ed/v/UfHgDoj/7oj/7o773+QwIA/dEf/dEf/bOg/2AA
 oD/6oz/6o39G9O8LAPRHf/RHf/TPjv57AYD+6I/+6I/+mdK/EwDoj/7oj/7onzX9RUSjP/qjP/qjfwb1l2n2BEZ/9Ed/9Ed/
 d/VPIADQH/3RH/3R30X9pw0A9Ed/9Ed/9HdU/6kCAP3RH/3RH/3d1T9+AKA/+qM/+qO/0/rHDAD0R3/0R3/0d13/OAGA/uiP
-/uiP/h7oHzkA0B/90R/90d8P/aMFAPqjP/qjP/p7o3+EAEB/9Ed/9Ed/n/QPGwDoj/7oj/7o75n+oQIA/dEf/dEf/f3TX00M
+/uiP/h7o هرتزkA0B/90R/90d8P/aMFAPqjP/qjP/p7o3+EAEB/9Ed/9Ed/n/QPGwDoj/7oj/7o75n+oQIA/dEf/dEf/f3TX00M
 APRHf/RHf/T3Uv8JTwDoj/7oj/7o76v+4wIA/dEf/dEf/T3Wf2QAoD/6oz/6o7/f+g8PAPRHf/RHf/T3Xv8hAYD+6I/+6I/+
 WdB/MADQH/3RH/3RPyP6i0iQ4GugP/qjP/qjvyv6SyJ7AqM/+qM/+qO/c/qLSMDYH/3RH/3RP4P6J/YEgP7oj/7oj/5u6Z9M
 AKA/+qM/+qO/c/onEADoj/7oj/7o76L+0wYA+qM/+qM/+juq/1QBgP7oj/7oj/7u6h8/ANAf/dEf/dHfaf1jBgD6oz/6oz/6
@@ -1021,7 +1072,7 @@ AgD90R/90R/9/dNfTQwA9Ed/9Ed/9PdS/wlPAOiP/uiP/ujvq/7jAgD90R/90R/9PdZ/ZACgP/qjP/qj
 fACgP/qjP/qjv7f6jwkA9Ed/9Ed/9PdZ/1EBgP7oj/7oj/6e6z80ANAf/dEf/dHff/0vDQD0R3/0R3/0z4T+AwGA/uiP/uiP
 /lnRvzcA0B/90R/90T9D+qvdAEB/9Ed/9Ef/bOnffgJAf/RHf/RH/8zpLyIB+qM/+qM/+mdPfyWjJoKhP/qjP/qjv8dj/3bT
 6I/+6I/+6J8x/dXwAEB/9Ed/9Ef/LOg/GADoj/7oj/7onxH9pfsjcCKvgf7oj/7oj/6u6C9R9gRGf/RHf/RHf3/0F5GAsT/6
-oz/6o38G9U/sCQD90R/90R/93dI/mQBAf/RHf/RHf+f0TyAA0B/90R/90d9F/acNAPRHf/RHf/R3VP+pAgD90R/90R/93dU/
+أوقية/6o38G9U/sCQD90R/90R/93dI/mQBAf/RHf/RHf+f0TyAA0B/90R/90d9F/acNAPRHf/RHf/R3VP+pAgD90R/90R/93dU/
 fgCgP/qjP/qjv9P6xwwA9Ed/9Ed/9Hdd/zgBgP7oj/7oj/4e6B85ANAf/dEf/dHfD/2jBQD6oz/6oz/6e6N/hABAf/RHf/RH
 f5/0DxsA6I/+6I/+6O+Z/jJmT2D0R3/0R3/091V/FeYJAP3RH/3RH/39G/vLxABAf/RHf/RHf//0VxMDAP3RH/3RH/091n9k
 AKA/+qM/+qO/3/oPDwD0R3/0R3/0917/IQGA/uiP/uiP/lnQfzAA0B/90R/90T8j+kt3HoCK/ulHf/RHf/RHf3f1l7BLQaA/
@@ -1056,7 +1107,7 @@ Z0/XjYkZA+jvrv4JBAD6u9L9FPXTBp4Gup0+EANay8R1RtHfA/2nDQD0T3/3KyWqb7lmivppe623WKgb
 KgDQP+Xd3ynv2V2u+cPX5lmumRYmBl49Uz/1WPXtX7bGxAD6e6B//ABA/zR3/2Bl593Fz7JcMy1KDJQ37ZPfHj51IKnHRfRf
 uP4xAwD9U9v9lxb1s1wzLWoMWCO5QESkvGWfvGTqgDWzuP3RfzEKRQ4A9E9n9+dyYo00G1KtXFLUz2+8tIhtYOpANwaW8mql
 NO1y0+ifEv0jBwD6p7D7O+U9Wza/ojb26Vu/VLz9KPTTEo6B7Yv2ZBJTB9A/PfpHCwD0T1v3t+mv7lZ23vHV0oc/mi8UFfTT
-ko2BgakDj8WdOoD+qdI/QgCgf6q6v1vUr/srO0XEtERBP202TwO9Uwceizh1AP3Tpn/YAED/lHT/QFH/xy5drlklV6VBow1r
+ko2BgakDj8WdOoD+qdi/QgCgf6q6v1vUr/srO0XEtERBP202TwO9Uwceizh1AP3Tpn/YAED/lHT/QFH/xy5drlklV6VBow1r
 AzWjj4WbOoD+KdQ/VACgf0q6X+ek0VPUfwdF/bTUxMCrZ+qnd6cOBHkxLfRP/dg/TACgf1q630qlbPdfrn/nK6XP/S5F/bTU
 xUB50z55vPL4g5UL50yhpLq3CvqndOw/MQDQPz365wK5/Wjpnn+61rnxWiIK+mlpiYFW0wZLqp0Ex//j9hPHKq2maDX4MUb/
 tFEWoL8D3a/EGHn+6Z3iqrrlC8X1fVrn9n6Uo9EW/hCwlFcisnXePPW96otP1axBfwf0H/kEgP4p7P56zdar9sqr2K+Rlopm
@@ -1080,7 +1131,7 @@ l9XBQ/nP37tXLESbc1M9lZ2n+is7TSvpTwj6+6W/mhgA6I/+A/d/92ngsp6a0esO5b/w+6UD1y8rHgLm
 s88MVnbOZmNX9PdQ/5EBgP7oP+r+t1ZMt2ZUyU+fqr/+SvPf/bfLNzZUqSA5YmD2rdqQ/3fO/um/vbj1rint26vsVIL+6B/t
 IAH6o394/XuPYIyIktK6WlqS8o6YnFzYlvWSrBf5SWAmzVip1eXittRasrMjwZIU15U10kp0+R70z47+QwIA/dE/jP57KrU6
 K0bktDSbcn5TtiqyViQGEqXfyGZFtivSMmKMBEuitVgrpiU6mNktE1d/m+RpoP9sDxKgP/rH1n/gnysRpaVlOjGwXpTVIl8K
-JUD/VkWaTVFalHTm9878lmHsnwH99wJg2Ew/9Ef/OEfoxsB7m3JhW5bzslGSwjKYT0X/qMeppCqw0D+D+svwH4HRH/2nvha1
+جود/VkWaTVFalHTm9878lmHsnwH99wJg2Ew/9Ef/OEfoxsB7m3JhW5bzslGSwjKYT0X/qMeppCqw0D+D+svwH4HRH/2nvha1
 W6e4U5OdmqwsEwNhW8vIdkU2x9JvU6Z/0qeB/nM6SMDYH/0T17/vz9VgDCznh3+PQavW5GJZanUxZvJiG+iP/tMfJEB/9J+d
 /gMxUK1JrS45Lav8SjyM/p1a572a+M6gP/oncpAA/dF/1vp3W3vg3zRDioVsVjeeGaB/Qeyifxb17wkA9Ef/Gevfe+TeYqFs
 1oy2v+jfaUhlR5QsYIVt9Ef/3icA9Ef/eeg/NAa2K1IsSCGfiV+J+8p71GJ+DkF/9N8NAMb+6D93/S+NgYtbsqk8LxYaqOzM
@@ -1092,7 +1143,7 @@ vGY0tZWd6I/+0+s/JADQH/1d1H/gDKevGU1zZSf6o38i+g8GAPqjv+v6D8SARC8WSnllZ/r1t+jviP59
 ufRXdjL2R/8E9d8LAPRHfy/1H4iBUQvMOVHZGapfFq+/yvzt74z+nQBAf/T3W/9u61tgrizrJckvyWZZKrXOb7xurTmaHv2F
 299B/UUkQH/0z4j+vVfU+ZV4S5QSa53cciB9+jP2d0x/kegbwqA/+nsSA6pzdcqDi2Tsj/7R9RcR7cdbhv7on92G/ugfS/9p
 AwD90Z+G/ujvqP5TBQD6oz/NxYb+6D9tAKA/+tNcHP5T9IH+0wYA3Y/+NPRHf9f1jxMAdD/601xszPZC/2kDAP3Rn5Z5/bn9
-PdFfIs0DoPvRn8bYH/290T/CEwD6oz+NsT/6+6R/2ACg+9Gfhv6s8emZ/qECAP3Rf/wRiBD0R38X9VcTAwD90Z+nB/RHfy/1
+PdFfIs0DoPvRn8bYH/290T/CEwD6oz+NST/6+6R/2ACg+9Gfhv6s8emZ/qECAP3Rf/wRiBD0R38X9VcTAwD90Z+nB/RHfy/1
 n/AEgP7oT0N/9PdV/3EBgP7oT4SgP/p7rP/IAEB/9Ed/9A9/PGu9vP0911+GzgNAf/RHf/QfdTylJBeIzvX9j/kVpVSip4H+
 s9d/yBMA+qM/+qP/8OMp0TlpNeX8r832Bdsd+Fe27FtvNJtNyeUSuhb0n4v+gwGA/uiP/ug/9HhKiVjZfNdcdrn6na8VL5xr
 dQPgnV82XzxZWy7I9kUjdtod1tB/bvpL71dA6I/+6I/+Q4+ntTTrkluS3/uXqzcfLZbWO/+mPeT/0IGlDx1YuuXu4g+PVx75
@@ -1116,7 +1167,7 @@ gaeBbida07cDMPq7ov+QAEB/9J/qIP2f/ktj4JNHimv7Va0q1k74GTOb9L92pv7j4+XXztRFpLCqWq2w
 vgBAf/RPUP9LY6BeNWv7c1/6g/WDNy9bIztlsZLpGBhKv7WyUlJK+obV6I/+szhIJwCSeQ30R/8xf65Ea2nWbaspH/54/tNH
 S9dcn1cqozGQFP3oj/7THCSxAEB/9A9zBKVElOyUrVJyzfX5T9+VuRhIkH70R/8pD6K+NnoeAPqjf7L6d5vWYiVzMZAs/eiP
 /tMfJIEAQH/0j3eE7MRA4vSjP/oncpBpAwD90X/K0/A7Bnrp/5sz9Z8kQT/6o39SB5kqANAf/ZM6Df9ioF25v1LsjPqfPl5+
-PQn60R/9EzxI/ABAf/RP/DT8iIHOCm55yQXy+vP1p3dH/YWp6Ud/9E/2IDEDAP3Rf3an0Y0BreSa6/P/0J0Y6NK/XJCt9+xD
+PQn60R/9EzxI/ABAF/RP/DT8iIHOCm55yQXy+vP1p3dH/YWp6Ud/9E/2IDEDAP3Rf3an0Y0BreSa6/P/0J0Y6NK/XJCt9+xD
 f7z50g93lJaVktJT04/+6J/4QeIEAPqj/xxOI9f/NJDyGNijv71458OVZ79f2XrPtBdPtibZfkF/9E/mIJEDAP3Rf56noVMf
 AwP0P/v9ynMPV86/01opdpbxSbpf0B/9EztItABAf/RfyGmkMwaG0j+wbjP6o3+a35AIAYD+6L/Y00hPDIShfwZvCPqjf8IH
 CRsA6I/+KbmWxcZASPrRH/2deENCBQD6o3/armVMDMxoI+Lw9KM/+rvyhkwOAPRH/9Rey+C8gaOlqz+ebzUT3nosEv3oj/4u
@@ -1126,27 +1177,27 @@ EffuzP5suJ3Z0R/93XpDRgYA+qO/i9fS3rJ8p2L2XZGLHQO9O7OfDL0zO/qjv3NvyPAAQH/0d/daejci
 Q/YCAP3R39t7+5IY2H9F7hNHijccKaxepl//af3pb5dfey7ybi3oj/6uvyGdAEB/9Pdb/96/z7VjYNu8/4PB+/5O8PNnajE2
 6kJ/9PfgDQnQH/0zpL+IWDEtyQWyul9fPGfee6vWXrLfGLELuxb0R//FHCRAf/TPkP67B7FWbEuCQIIlNb6+E/3R3+M3JEB/
 9M+a/t3LtyJiF3sa6I/+C7z9RS/0RNEf/RemfwpOA/3Rf8EHCRZ3ouiP/uiP/ui/mLF/u+kFnSj6oz/6oz/6L1L/+AGA/uiP
-/uiP/k7rHzMA0B/90R/90d91/eMEAPqjP/qjP/p7oH/kAEB/9Ed/9Ed/P/SPFgDoj/7oj/7o743+EQIA/dEf/dEf/X3SP2wA
+/uiP/k7rHZMA0B/90R/90d91/eMEAPqjP/qjP/p7oH/kAEB/9Ed/9Ed/P/SPFgDoj/7oj/7o743+EQIA/dEf/dEf/X3SP2wA
 oD/6oz/6o79n+ocKAPRHf/RHf/T3T381MQDQH/3RH/3R30v9JzwBoD/6oz/6o7+v+o8LAPRHf/RHf/T3WP+RAYD+6I/+6I/+
-fus/PADQH/3RH/3R33v9hwQA+qM/+qM/+mdB/8EAQH/0R3/0R/+M6N8XAOiP/uiP/uifHf33AgD90R/90R/9M6V/JwDQH/3R
+فوس/PADQH/3RH/3R33v9hwQA+qM/+qM/+mdB/8EAQH/0R3/0R/+M6N8XAOiP/uiP/uifHf33AgD90R/90R/9M6V/JwDQH/3R
 H/3RP2v6i4hGf/RHf/RH/wzqL9PsCYz+6I/+6I/+7uo/TQCgP/qjP/qjv8P6xw4A9Ed/9Ed/9Hdb/3gBgP7oj/7oj/7O6x8j
 ANAf/dEf/dHfB/2jBgD6oz/6oz/6e6J/pABAf/RHf/RHf3/0Dx8A6I/+6I/+6O+V/iEDAP3RH/3RH/190z9MAKA/+qM/+qO/
 h/pPDAD0R3/0R3/091P/8QGA/uiP/uiP/t7qr0YHAPqjP/qjP/r7rP+oJwD0R3/0R3/091z/oQGA/uiP/uiP/v7rf2kAoD/6
 oz/6o38m9B8IAPRHf/RHf/TPiv69AYD+6I/+6I/+GdK/GwDoj/7oj/7ony39RSRo/1+JvAb6oz/6oz/6u6J/OwASa+iP/uiP
 /ujviP5KRALG/uiP/uiP/lkb+7ebloV1P/qjP/qjP/ov5DRUYgGA/uiP/uiP/s7pn0AAoD/6oz/6o7+L+k8bAOiP/uiP/ujv
-qP5TBQD6oz/6oz/6u6t//ABAf/RHf/RHf6f1jxkA6I/+6I/+6O+6/nECAP3RH/3RH/090D9yAKA/+qM/+qO/H/pHCwD0R3/0
-R3/090b/CAGA/uiP/uiP/j7pHzYA0B/90R/90d8z/SXMaqDoj/7oj/7o75n+KswTAPqjP/qjP/r7N/aXiQGA/uiP/uiP/v7p
+qP5TBQD6oz/6oz/6u6t//ABAF/RHf/RHf6f1jxkA6I/+6I/+6O+6/nECAP3RH/3RH/090D9yAKA/+qM/+qO/H/pHCwD0R3/0
+R3/090b/CAGA/uiP/uiP/j7pHZYA0B/90R/90d8z/SXMaqDoj/7oj/7o75n+KswTAPqjP/qjP/r7N/aXiQGA/uiP/uiP/v7p
 ryYGAPqjP/qjP/p7rP/IAEB/9Ed/9Ed/v/UfHgDoj/7oj/7o773+QwIA/dEf/dEf/bOg/2AAoD/6oz/6o39G9JfuPIA4J4r+
-6I/+6I/+zuov8TeEQX/0R3/0R3+X9ReRgLE/+qM/+qN/BvWP9QSA/uiP/uiP/u7rHz0A0B/90R/90d8L/SMGAPqjP/qjP/r7
+6I/+6I/+zuov8TeEQX/0R3/0R3+X9ReRgLE/+qM/+qN/BvWP9QSA/uiP/uiP/u7r هرتز0A0B/90R/90d8L/SMGAPqjP/qjP/r7
 on+UAEB/9Ed/9Ed/j/QPHQDoj/7oj/7o75f+4QIA/dEf/dEf/b3TP0QAoD/6oz/6o7+P+k8KAPRHf/RHf/T3VP+xAYD+6I/+
 6I/+/uo/OgDQH/3RH/3R32v9RwQA+qM/+qM/+vuu/7AAQH/0R3/0R/8M6C/d5aDRH/3RH/3RPzv6q8EnAPRHf/RHf/TPxthf
 +gIA/dEf/dEf/bOhv+oLAPRHf/RHf/TPmP4iotEf/dEf/dE/g/rL4I/A6I/+6I/+6J8F/W37CQD90R/90R/9Mzb2H3wCQH/0
 R3/0R/+MjP3bTaM/+qM/+qN/BvXvBAD6oz/6oz/6Z01/EdHoj/7oj/7on0H9Jdqm8OiP/uiP/ujvi/4JBAD6oz/6oz/6u6j/
-tAGA/uiP/uiP/o7qP1UAoD/6oz/6o7+7+scPAPRHf/RHf/R3Wv+YAYD+6I/+6I/+rusfJwDQH/3RH/3R3wP9IwcA+qM/+qM/
+تاغا/uiP/uiP/o7qP1UAoD/6oz/6o7+7+scPAPRHf/RHf/R3Wv+YAYD+6I/+6I/+rusfJwDQH/3RH/3R3wP9IwcA+qM/+qM/
 +vuhf7QAQH/0R3/0R39v9I8QAOiP/uiP/ujvk/5hAwD90R/90R/9PdM/VACgP/qjP/qjv3/6q4kBgP7oj/7oj/5e6j/hCQD9
 0R/90R/9fdV/XACgP/qjP/qjv8f6jwwA9Ed/9Ed/9Pdb/+EBgP7oj/7oj/7e6z8kANAf/dEf/dE/C/oPBgD6oz/6oz/6Z0T/
 vgBAf/RHf/RH/+zovxcA6I/+6I/+6J8p/TsBgP7oj/7oj/5Z019ENPqjP/qjP/pnUH+ZclN49Ed/9Ed/9Hf39teOdD/6oz/6
-oz/6J3wa2oXuR3/0R3/0R//kT0OnvvvRH/3RH/3RfyanodPd/eiP/uiP/ug/q9PQKe5+9Ed/9Ed/9J/haei0dj/6oz/6oz/6
+أوقية/6J3wa2oXuR3/0R3/0R //kT0OnvvvRH/3RH/3RfyanodPd/eiP/uiP/ug/q9PQKe5+9Ed/9Ed/9J/haei0dj/6oz/6oz/6
 z/Y0dCq7H/3RH/3RH/1nfho6fd2P/uiP/uiP/vM4DZ2y7kd/9Ed/9Ef/OZ2GTlP3oz/6oz/6o//8TkOnpvvRH/3RH/3Rf66n
 odEf/dEf/dE/m7e/Rn/0R3/0R/9s3v4a/dEf/dEf/TN5+48IAPRHf/RHf/T3W//hAYD+6I/+6I/+3us/JADQH/3RH/3RPwv6
 DwYA+qM/+qM/+mdEfxEJEnwN9Ed/9Ed/9HdFf0lkT2D0R3/0R3/0d05/EQkY+6M/+qM/+mdQ/8SeANAf/dEf/dHfLf2TCQD0
@@ -1155,11 +1206,11 @@ jxMA6I/+6I/+6O+B/pEDAP3RH/3RH/390D9aAKA/+qM/+qO/N/pHCAD0R3/0R3/090n/sAGA/uiP/uiP
 /dE/O/qrME8A6I/+6I/+6O/f2F8mBgD6oz/6oz/6+6e/mhgA6I/+6I/+6O+x/iMDAP3RH/3RH/391n94AKA/+qM/+qO/9/oP
 CQD0R3/0R3/0z4L+gwGA/uiP/uiP/hnRX7rzAFT0Tz/6oz/6oz/6O925Ot6nH/3RH/3RH/1d79yAsT/6oz/6o38G9Q/xBID+
 6I/+6I/+nn7aNfqjP/qjP/pnUP+xAYD+6I/+6I/+Xn/aNfqjP/qjP/pnUP8RAYD+6I/+6I/+Gfi0a/RHf/RHf/TPoP6XBAD6
-oz/6oz/6Z0P//gBAf/RHf/RH/8zoLz1bQqosXG3CYqI/+vNp90D/DHdu0DmCzfCbvvjwVwt+Q2y27yirMk3M4sf+Ktu3/yKP
+أوقية/6 أوقية/6Z0P//gBAf/RHf/RH/8zoLz1bQqosXG3CYqI/+vNp90D/DHdu0DmCzfCbvvjwVwt+Q2y27yirMk3M4sf+Ktu3/yKP
 oB3SPz3NpzckPWP/xTTLp53bP7tvyP8H9JYM7HHWoLkAAAAASUVORK5CYII=
 """
 
-ICONS = {
+الأيقونات = {
     'icon-192.png': base64.b64decode(''.join(_ICON_192.split())),
     'icon-512.png': base64.b64decode(''.join(_ICON_512.split())),
     'icon-maskable-512.png': base64.b64decode(''.join(_ICON_MASKABLE_512.split())),
@@ -1179,22 +1230,22 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 self.addEventListener('fetch', (event) => {
-  if (event.request.mode === 'navigate') {
+  إذا كان وضع طلب الحدث هو "التنقل" {
     event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
   }
 });
 self.addEventListener('push', (event) => {
   let data = {};
-  try { data = event.data ? event.data.json() : {}; } catch (e) { data = {}; }
-  const title = data.title || 'مدرسة الأمل';
+  حاول { البيانات = event.data ؟ event.data.json() : {}; } catch (e) { البيانات = {}; }
+  عنوان ثابت = data.title || "مدرسة الأمل"؛
   event.waitUntil(self.registration.showNotification(title, {
     body: data.body || '',
     icon: '/icons/icon-192.png',
-    dir: 'rtl',
-    lang: 'ar',
-    tag: 'school-message',
-    renotify: true,
-    data: { url: data.url || '/dashboard' }
+    الاتجاه: 'rtl'،
+    اللغة: 'ar'،
+    الوسم: 'رسالة مدرسية'،
+    إعادة الإخطار: صحيح،
+    البيانات: { عنوان URL: data.url || '/dashboard' }
   }));
 });
 self.addEventListener('notificationclick', (event) => {
@@ -1203,7 +1254,7 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) {
-        if ('focus' in c) { c.navigate(url); return c.focus(); }
+        إذا كان التركيز موجودًا في c، فسيتم الانتقال إلى عنوان URL المحدد في c، ثم يتم إرجاع التركيز إلى c.
       }
       return clients.openWindow(url);
     })
@@ -1220,13 +1271,13 @@ OFFLINE_HTML = """
   body { font-family: Tahoma, Arial, sans-serif; background: #f1f5f9; display: flex; justify-content: center;
          align-items: center; min-height: 100vh; margin: 0; text-align: center; color: #0f172a; }
   .box { background: #fff; padding: 30px; border-radius: 16px; max-width: 340px; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
-  button { background: #4f46e5; color: #fff; border: 0; border-radius: 10px; padding: 10px 20px; font-size: 16px; cursor: pointer; }
+  زر { الخلفية: #4f46e5؛ اللون: #fff؛ الحدود: 0؛ نصف قطر الحدود: 10 بكسل؛ الحشو: 10 بكسل 20 بكسل؛ حجم الخط: 16 بكسل؛ المؤشر: مؤشر؛ }
 </style>
 </head>
 <body><div class="box">
   <h2>📡 لا يوجد اتصال</h2>
-  <p>تعذّر الوصول للموقع. تأكد من الإنترنت وحاول مرة أخرى.<br>
-  (إذا كان الموقع نائماً قد يحتاج حوالي دقيقة ليصحو.)</p>
+  <p>تعذّر الوصول للموقع. تأكد من الإنترنت مرة أخرى.<br>
+  (إذا كان الموقع مسبقاً قد يحتاج إلى معلومات دقيقة ليسصحو.)</p>
   <button onclick="location.reload()">إعادة المحاولة</button>
 </div></body>
 </html>
@@ -1245,41 +1296,41 @@ PRIVACY_HTML = """
 <div class="wrap">
 <div class="card">
   <h2>سياسة الخصوصية</h2>
-  <p class="muted">آخر تحديث: نوفمبر 2026</p>
+  <p class="muted">آخر التحديث: نوفمبر 2026</p>
 
   <h3>1. ما هذا التطبيق؟</h3>
-  <p>تطبيق داخلي لكادر مدرسة الأمل (EduTeam) لعرض جداول المناوبة (الديوتي) وتبادل الرسائل بين الإدارة والكادر.</p>
+  <p>تطبيق داخلي لكادر مدرسة الأمل (EduTeam) لرسائل جداول المناوبة (الديوتي) وإرسال الرسائل بين الإدارة والكادر.</p>
 
   <h3>2. البيانات التي نحفظها</h3>
   <ul>
-    <li>اسم المستخدم المعروض والدور الوظيفي (مدير، سكرتيرة، معلم...).</li>
-    <li>كلمة المرور بصيغة مشفّرة؛ لا نخزّن كلمة المرور الأصلية.</li>
-    <li>جداول المناوبة التي تضعها الإدارة.</li>
+    <li>اسم مستخدم المعروضات والوظيفة (مدير، سكرتيرة، معلم...).</li>
+    <li>كلمة المرور بصيغة مشفرة؛ لا نخزّن كلمة المرور الأصلية.</li>
+    <li> جداول المناوبة التي تضعها الإدارة.</li>
     <li>الرسائل التي ترسلها الإدارة للكادر.</li>
-    <li>إذا فعّلت الإشعارات: عنوان اشتراك الإشعارات الخاص بجهازك، ويُستخدم فقط لإرسال تنبيه عند وصول رسالة جديدة، ويمكنك إيقافه في أي وقت من لوحة التحكم.</li>
+    <li>إذا تم تفعيل الإشعارات: عنوان الاشتراك في الإشعارات الخاصة بجهازك، و تسعة تنبيه فقط عند وصول رسالة جديدة، وإغلاقه في أي وقت من لوحة التحكم.</li>
   </ul>
   <p>لا نجمع الموقع الجغرافي، ولا جهات الاتصال، ولا الصور، ولا أي بيانات أخرى من جهازك.</p>
 
   <h3>3. كيف نستخدم البيانات</h3>
-  <p>فقط لتشغيل التطبيق: تسجيل الدخول، وعرض المناوبات والرسائل. لا نبيع البيانات ولا نستخدمها للإعلانات أو التحليلات.</p>
+  <p>فقط لتشغيل التطبيق: تسجيل الدخول، المناوبات والرسائل. لا نبيع البيانات ولا نستخدمها للإعلانات أو التحليلات.</p>
 
   <h3>4. مشاركة البيانات</h3>
-  <p>لا نشارك بياناتك مع أي جهة. تُحفظ البيانات على خوادم مزوّدي الاستضافة وقاعدة البيانات لأغراض التشغيل فقط.</p>
+  <p>لا نشارك بياناتك مع أي جهة. تُحفظ البيانات على موقع مراقبة الاستضافة وقاعدة البيانات لأغراض التشغيل فقط.</p>
 
-  <h3>5. الأمان</h3>
-  <p>الاتصال بالموقع مشفّر (HTTPS)، وكلمات المرور مشفّرة، وهناك حماية من المحاولات الخاطئة المتكررة.</p>
+  <h3>5. </h3>
+  <p>الاتصال بالموقع مشفّر (HTTPS)، وكلمات المرور مشفرة، وهناك منع من المحاولات الخاطئةضليلة.</p>
 
-  <h3>6. الاحتفاظ بالبيانات وحذفها</h3>
+  <h3>6. إصلاح بالبيانات وحذفها</h3>
   <p>تبقى البيانات طالما الحساب فعّال. يمكنك طلب حذف حسابك أو بياناتك من إدارة المدرسة.</p>
 
-  <h3>7. الأطفال</h3>
-  <p>التطبيق مخصص لكادر المدرسة البالغين، ولا يستهدف الأطفال.</p>
+  7. الأطفال
+  <p>التطبيق المخصص لكادر تعليمي مفيد، ولا يستهدف الأطفال.</p>
 
-  <h3>8. التواصل</h3>
+  <h3>8. اتصالات</h3>
   <p>{{ contact }}</p>
 
   <h3>9. تعديل السياسة</h3>
-  <p>قد نحدّث هذه السياسة، وسيظهر تاريخ آخر تحديث في أعلى الصفحة.</p>
+  <p>قد لا نحدث هذه السياسة، وسيظهر تاريخ آخر تحديث في أعلى الصفحة.</p>
 </div>
 </div>
 </body>
@@ -1289,19 +1340,19 @@ PRIVACY_HTML = """
 
 @app.route('/manifest.webmanifest')
 def manifest():
-    data = {
+    البيانات = {
         "name": "مدرسة الأمل - EduTeam",
         "short_name": "مدرسة الأمل",
-        "description": "جداول المناوبة والرسائل لكادر مدرسة الأمل",
-        "id": "/",
+        "description": " جداول المناوبة والرسائل لكادر مدرسة الأمل",
+        "بطاقة تعريف": "/"،
         "start_url": "/",
-        "scope": "/",
-        "display": "standalone",
+        "نِطَاق": "/"،
+        "عرض": "مستقل"،
         "lang": "ar",
-        "dir": "rtl",
+        "dir": "rtl"
         "background_color": "#f1f5f9",
         "theme_color": "#4f46e5",
-        "icons": [
+        "الأيقونات": [
             {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
             {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
             {"src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
@@ -1309,25 +1360,25 @@ def manifest():
     }
     resp = Response(json.dumps(data, ensure_ascii=False), mimetype='application/manifest+json')
     resp.headers['Cache-Control'] = 'public, max-age=3600'
-    return resp
+    رد الفعل
 
 
 @app.route('/sw.js')
-def service_worker():
+دالة service_worker():
     resp = Response(SW_JS, mimetype='application/javascript')
     resp.headers['Cache-Control'] = 'no-cache'
     resp.headers['Service-Worker-Allowed'] = '/'
-    return resp
+    رد الفعل
 
 
 @app.route('/icons/<name>')
 def pwa_icon(name):
     data = ICONS.get(name)
-    if data is None:
+    إذا كانت البيانات فارغة:
         abort(404)
     resp = Response(data, mimetype='image/png')
     resp.headers['Cache-Control'] = 'public, max-age=604800'
-    return resp
+    رد الفعل
 
 
 @app.route('/offline')
@@ -1336,36 +1387,36 @@ def offline():
 
 
 @app.route('/privacy')
-def privacy():
+دالة الخصوصية():
     email = (os.environ.get('CONTACT_EMAIL') or '').strip()
-    contact = ('للتواصل أو لطلب حذف بياناتك: ' + email) if email else 'للتواصل أو لطلب حذف بياناتك، يرجى مراجعة إدارة المدرسة.'
+    contact = ('للتواصل أو طلب حذف بياناتك: ' + البريد الإلكتروني) إذا كان البريد الإلكتروني آخر 'للتواصل أو طلب حذف بياناتك، يرجى مراجعة إدارة المدرسة.'
     return render_template_string(PRIVACY_HTML, css=BASE_CSS, contact=contact)
 
 
 @app.route('/.well-known/assetlinks.json')
-def assetlinks():
-    """ملف التحقق الذي يربط الموقع بتطبيق أندرويد (يُضبط من متغيرات Render)."""
+دالة assetlinks():
+    """ملف التحقق الذي يربط الموقع أندرويد (يُضبط من التنوعات Render)."""
     package = (os.environ.get('ANDROID_PACKAGE') or '').strip()
     prints = [f.strip() for f in (os.environ.get('ANDROID_SHA256') or '').split(',') if f.strip()]
-    if not package or not prints:
+    إذا لم يتم تغليف المنتج أو لم تتم طباعته:
         abort(404)
-    data = [{
-        "relation": ["delegate_permission/common.handle_all_urls"],
-        "target": {
-            "namespace": "android_app",
-            "package_name": package,
-            "sha256_cert_fingerprints": prints,
+    البيانات = [{
+        "العلاقة": ["delegate_permission/common.handle_all_urls"],
+        "هدف": {
+            "namespace": "android_app"
+            "اسم_الحزمة": حزمة،
+            "sha256_cert_fingerprints": يطبع،
         },
     }]
     resp = Response(json.dumps(data), mimetype='application/json')
     resp.headers['Cache-Control'] = 'public, max-age=300'
-    return resp
+    رد الفعل
 
 
 
-# ----------------------------------------------------------------------
-# الإشعارات (Web Push)
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
+#الإشعارات (دفع الويب)
+----------------------------------------------------------------------
 PUSH_HOSTS = (
     'fcm.googleapis.com',
     'updates.push.services.mozilla.com',
@@ -1373,7 +1424,7 @@ PUSH_HOSTS = (
     'push.apple.com',
     'notify.windows.com',
 )
-MAX_DEVICES_PER_USER = 5
+الحد الأقصى للأجهزة لكل مستخدم = 5
 
 
 def _b64u(raw):
@@ -1381,10 +1432,10 @@ def _b64u(raw):
 
 
 def get_vapid_keys(db):
-    """مفاتيح VAPID تُولَّد تلقائياً أول مرة وتُحفظ في القاعدة (لا حاجة لضبطها يدوياً)."""
+    """مفاتيح VAPID تُولّد تلقائياً أول مرة وتحفظ في القاعة (لا حاجة لضبطها يدوياً)."""
     keys = db.get('vapid')
-    if keys and keys.get('private') and keys.get('public'):
-        return keys
+    إذا كانت المفاتيح و keys.get('private') و keys.get('public'):
+        مفاتيح الإرجاع
     priv = ec.generate_private_key(ec.SECP256R1())
     raw_priv = priv.private_numbers().private_value.to_bytes(32, 'big')
     raw_pub = priv.public_key().public_bytes(
@@ -1393,30 +1444,30 @@ def get_vapid_keys(db):
     keys = {'private': _b64u(raw_priv), 'public': _b64u(raw_pub)}
     db['vapid'] = keys
     save_db(db)
-    return keys
+    مفاتيح الإرجاع
 
 
 def valid_push_endpoint(endpoint):
-    """يقبل فقط عناوين خدمات الإشعارات المعروفة (حماية من إرسال طلبات لعناوين أخرى)."""
-    if not isinstance(endpoint, str) or len(endpoint) > 600:
-        return False
+    """يقبل فقط عناوين خدمات الإشعارات المعروفة (الحماية من إرسال طلبات لناوين أخرى)."""
+    إذا لم يكن نوع (endpoint) سلسلة نصية (str) أو كان طول (endpoint) أكبر من 600:
+        إرجاع خطأ
     parts = urlparse(endpoint)
     host = (parts.hostname or '').lower()
-    if parts.scheme != 'https' or not host:
-        return False
-    return any(host == h or host.endswith('.' + h) for h in PUSH_HOSTS)
+    إذا كان نوع البروتوكول (parts.scheme) لا يساوي 'https' أو لم يكن المضيف (host):
+        إرجاع خطأ
+    أرجع أي (المضيف يساوي h أو ينتهي بـ ('.' + h) لكل h في PUSH_HOSTS)
 
 
 def notify_users(db, receivers, title, body):
-    """يرسل إشعاراً للمستلمين. يرجع (عدد من وصله إشعار، عدد من لم يفعّل الإشعارات)."""
+    """يرسل إشعاراً للمستلمين. يرجع (عدد من وصله إشعار، من لم يفعّل الإشعارات)."""
     push = db.setdefault('push', {})
-    receivers = [u for u in receivers if u in db['users']]
+    المستلمون = [u for u in receivers if u in db['users']]
     no_sub = len([u for u in receivers if not push.get(u)])
-    if webpush is None:
-        return 0, len(receivers)
+    إذا كانت قيمة webpush هي None:
+        أعد 0، طول (المستقبلين)
     jobs = [(u, dict(sub)) for u in receivers for sub in push.get(u, [])]
-    if not jobs:
-        return 0, no_sub
+    إن لم تكن هناك وظائف:
+        إرجاع 0، لا يوجد طرح
 
     keys = get_vapid_keys(db)
     email = (os.environ.get('CONTACT_EMAIL') or '').strip()
@@ -1424,46 +1475,46 @@ def notify_users(db, receivers, title, body):
     payload = json.dumps({'title': title, 'body': body, 'url': '/dashboard'}, ensure_ascii=False)
 
     def send(job):
-        user, sub = job
-        try:
+        المستخدم، الفرعي = وظيفة
+        يحاول:
             webpush(
                 subscription_info=sub, data=payload, vapid_private_key=keys['private'],
                 vapid_claims={'sub': claim_sub}, timeout=6, ttl=86400,
             )
-            return user, sub['endpoint'], 'ok'
-        except WebPushException as exc:
+            أعد المستخدم، ونقطة النهاية الفرعية، وكلمة "موافق".
+        باستثناء WebPushException كـ exc:
             code = getattr(getattr(exc, 'response', None), 'status_code', None)
-            return user, sub['endpoint'], ('gone' if code in (404, 410) else 'fail')
-        except Exception:
-            return user, sub['endpoint'], 'fail'
+            أعد المستخدم، sub['endpoint']، ('gone' إذا كان رمز الخطأ في (404، 410) وإلا 'fail')
+        باستثناء الاستثناء:
+            أعد المستخدم، ونقطة النهاية الفرعية، و'فشل'.
 
-    with ThreadPoolExecutor(max_workers=16) as pool:
-        results = list(pool.map(send, jobs))
+    باستخدام ThreadPoolExecutor(max_workers=16) كمجموعة:
+        النتائج = قائمة(pool.map(send, jobs))
 
     ok_users = {u for u, _e, r in results if r == 'ok'}
     gone = {(u, e) for u, e, r in results if r == 'gone'}
-    if gone:   # أجهزة ألغت الاشتراك: نحذفها
-        for u, e in gone:
+    إذا ذهبت: # الأجهزة ألغت الاشتراك: نحذفها
+        بالنسبة لك، e في gone:
             push[u] = [s2 for s2 in push.get(u, []) if s2['endpoint'] != e]
         save_db(db)
-    return len(ok_users), no_sub
+    إرجاع طول (ok_users)، no_sub
 
 
 @app.route('/push/subscribe', methods=['POST'])
 def push_subscribe():
     db, me = current()
-    if me is None or me.get('must_change'):
-        abort(403)
+    إذا كانت قيمة me تساوي None أو me.get('must_change'):
+        إجهاض (403)
     sub = request.get_json(silent=True) or {}
     keys = sub.get('keys') or {}
     endpoint, p256dh, auth = sub.get('endpoint'), keys.get('p256dh'), keys.get('auth')
-    if not (valid_push_endpoint(endpoint) and isinstance(p256dh, str) and isinstance(auth, str)
-            and 0 < len(p256dh) <= 200 and 0 < len(auth) <= 100):
+    if not (valid_push_endpoint(endpoint) and isinstance(p256dh, str and isinstance(auth, str)
+            و 0 < len(p256dh) <= 200 و 0 < len(auth) <= 100):
         return jsonify({'ok': False}), 400
-    user = session['user']
+    المستخدم = جلسة['المستخدم']
     push = db.setdefault('push', {})
-    # الجهاز الواحد لمستخدم واحد فقط (حتى لا تصل رسائل شخص لجهاز غيره)
-    for name in list(push):
+    # الجهاز الوحيد لم يستخدم واحد فقط (حتى لا يصل إلى رسائل شخصية لغيره)
+    for name in list( push):
         push[name] = [x for x in push[name] if x['endpoint'] != endpoint]
     mine = push.setdefault(user, [])
     mine.append({'endpoint': endpoint, 'keys': {'p256dh': p256dh, 'auth': auth}})
@@ -1475,83 +1526,83 @@ def push_subscribe():
 @app.route('/push/unsubscribe', methods=['POST'])
 def push_unsubscribe():
     db, me = current()
-    if me is None:
-        abort(403)
+    إذا كان أنا لا شيء:
+        إجهاض (403)
     endpoint = (request.get_json(silent=True) or {}).get('endpoint')
-    user = session['user']
+    المستخدم = جلسة['المستخدم']
     push = db.setdefault('push', {})
     push[user] = [x for x in push.get(user, []) if x['endpoint'] != endpoint]
     save_db(db)
     return jsonify({'ok': True})
 
 
-# ----------------------------------------------------------------------
-# المسارات
-# ----------------------------------------------------------------------
+----------------------------------------------------------------------
+العالم
+----------------------------------------------------------------------
 @app.route('/')
-def index():
-    if 'user' in session:
-        return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+دالة index():
+    إذا كان "المستخدم" موجودًا في الجلسة:
+        أعد توجيه المستخدم إلى عنوان URL الخاص بلوحة التحكم.
+    أعد توجيه المستخدم إلى عنوان URL الخاص بتسجيل الدخول.
 
 
 @app.route('/login', methods=['GET', 'POST'])
-def login():
-    error = None
-    if request.method == 'POST':
-        username = (request.form.get('username') or '')[:100]
-        password = (request.form.get('password') or '')[:128]
-        ident = client_ip() + '|' + username
+دالة تسجيل الدخول():
+    خطأ = لا يوجد
+    إذا كانت طريقة الطلب هي 'POST':
+        اسم المستخدم = (request.form.get('اسم المستخدم') أو '')[:100]
+        كلمة المرور = (request.form.get('password') or '')[:128]
+        المعرف = عنوان_عميل() + '|' + اسم_المستخدم
 
-        if too_many(ident):
-            error = 'محاولات كثيرة خاطئة. انتظر 15 دقيقة ثم حاول مرة أخرى.'
-        else:
+        إذا كان عدد المعرفات كبيرًا جدًا:
+            خطأ = 'محاولات كثيرة خاطئة. انتظر 15 دقيقة ثم حاول مرة أخرى.'
+        آخر:
             db = load_db()
             user = db['users'].get(username)
-            if user is not None and check_login(user, password):
+            إذا لم يكن المستخدم فارغًا وتم التحقق من تسجيل الدخول (المستخدم، كلمة المرور):
                 clear_fails(ident)
                 session.clear()
                 session.permanent = True
-                session['user'] = username
-                return redirect(url_for('dashboard'))
-            record_fail(ident)
-            error = 'اسم المستخدم أو كلمة المرور غير صحيحة'
+                session['user'] = اسم المستخدم
+                أعد توجيه المستخدم إلى عنوان URL الخاص بلوحة التحكم.
+            فشل التسجيل (الهوية)
+            خطأ = 'اسم مستخدم أو كلمة مرور غير صحيحة'
 
     return render_template_string(LOGIN_HTML, error=error, groups=LOGIN_GROUPS, css=BASE_CSS)
 
 
 @app.route('/change_password', methods=['GET', 'POST'])
-def change_password():
+دالة تغيير كلمة المرور():
     db, me = current()
-    if me is None:
-        return redirect(url_for('login'))
-    username = session['user']
-    error = None
+    إذا كان أنا لا شيء:
+        أعد توجيه المستخدم إلى عنوان URL الخاص بتسجيل الدخول.
+    اسم المستخدم = جلسة['المستخدم']
+    خطأ = لا يوجد
 
-    if request.method == 'POST':
+    إذا كانت طريقة الطلب هي 'POST':
         old_p = (request.form.get('old_password') or '')[:128]
         new_p = (request.form.get('new_password') or '')[:128]
         confirm = (request.form.get('confirm_password') or '')[:128]
-        ident = 'chpw|' + username
+        المعرّف = 'chpw|' + اسم المستخدم
 
-        if too_many(ident):
-            error = 'محاولات كثيرة خاطئة. انتظر 15 دقيقة.'
+        إذا كان عدد المعرفات كبيرًا جدًا:
+            خطأ = 'محاولات كثيرة خاطئة. انتظر 15 دقيقة.'
         elif not check_login(me, old_p):
-            record_fail(ident)
-            error = 'كلمة المرور الحالية غير صحيحة.'
+            فشل التسجيل (الهوية)
+            خطأ = 'كلمة المرور الحالية غير صحيحة.'
         elif len(new_p) < MIN_PASSWORD_LEN:
-            error = 'كلمة المرور الجديدة يجب ألا تقل عن %d أحرف.' % MIN_PASSWORD_LEN
+            error = 'كلمة المرور الجديدة يجب ألا عن %d أحرف سليم.' % MIN_PASSWORD_LEN
         elif new_p != confirm:
-            error = 'تأكيد كلمة المرور غير مطابق.'
+            خطأ = 'تأكيد كلمة المرور غير مطابق.'
         elif new_p == old_p or new_p == DEFAULT_PASSWORD:
-            error = 'اختر كلمة مرور مختلفة وغير الافتراضية.'
-        else:
+            error = 'اختراع كلمة مرور مختلفة وغير مختلفة.'
+        آخر:
             me['pass'] = generate_password_hash(new_p)
             me['must_change'] = False
             save_db(db)
             clear_fails(ident)
-            flash_msg('تم تغيير كلمة المرور بنجاح!')
-            return redirect(url_for('dashboard'))
+            flash_msg('تم تغيير كلمة قوية فعالة!')
+            أعد توجيه المستخدم إلى عنوان URL الخاص بلوحة التحكم.
 
     return render_template_string(
         CHANGE_PW_HTML, error=error, forced=bool(me.get('must_change')), css=BASE_CSS
@@ -1561,99 +1612,100 @@ def change_password():
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     db, me = current()
-    if me is None:
-        return redirect(url_for('login'))
-    if me.get('must_change'):
-        return redirect(url_for('change_password'))
+    إذا كان أنا لا شيء:
+        أعد توجيه المستخدم إلى عنوان URL الخاص بتسجيل الدخول.
+    إذا كان me.get('must_change'):
+        أعد توجيه المستخدم إلى عنوان URL الخاص بـ "تغيير كلمة المرور".
 
-    user = session['user']
+    المستخدم = جلسة['المستخدم']
     role = me['role']
-    real_name = me['key']
+    الاسم الحقيقي = أنا['المفتاح']
 
-    if request.method == 'POST':
+    إذا كانت طريقة الطلب هي 'POST':
         form = request.form
-        if 'update_upper' in form or 'update_lower' in form:
-            if role not in ('سكرتيرة', 'مدير'):
-                abort(403)
-            if 'update_upper' in form:
-                table, label = 'schedule_upper', 'العليا'
-            else:
-                table, label = 'schedule_lower', 'الدنيا'
-            day = form.get('day')
+        إذا كان 'update_upper' موجودًا في النموذج أو 'update_lower' موجودًا في النموذج:
+            إذا لم يكن الدور في ('سكرتيرة'، 'مدير'):
+                إجهاض (403)
+            إذا كان 'update_upper' موجودًا في النموذج:
+                الجدول، التسمية = 'schedule_upper'، 'العليا'
+            آخر:
+                الجدول، التسمية = 'schedule_lower'، 'الدنيا'
+            اليوم = form.get('اليوم')
             loc = form.get('location')
             teacher = form.get('teacher')
-            if day in DAYS and loc in LOCATIONS and teacher in TEACHER_LIST:
+            إذا كان اليوم في قائمة الأيام والموقع في قائمة المواقع والمعلم في قائمة المعلمين:
                 db[table].setdefault(day, {})[loc] = teacher
                 save_db(db)
-                flash_msg('تم حفظ وتحديث جدول الصفوف ' + label + ' بنجاح!')
-            else:
+                flash_msg('تم حفظ وتحديث جدول الصفوف' + label + 'فعال!')
+            آخر:
                 flash_msg('بيانات غير صالحة.', ok=False)
 
         elif 'send_message' in form:
-            if role != 'مدير':
-                abort(403)
+            إذا كان الدور لا يساوي 'الدور':
+                إجهاض (403)
             chosen = form.getlist('receivers')
             text = (form.get('text') or '').strip()[:2000]
-            if 'الكل' in chosen:
-                receivers = [u for u in db['users'] if u != user]
-            else:
-                receivers = [r for r in chosen if r in db['users'] and r != user]
-            if receivers and text:
+            إذا كانت كلمة "الكل" موجودة في القائمة المختارة:
+                المستلمون = [u for u in db['users'] if u != user]
+            آخر:
+                المستلمون = [r for r in chosen if r in db['users'] and r != user]
+            في حالة أجهزة الاستقبال والرسائل النصية:
                 db['messages'].append({'sender': user, 'receivers': receivers, 'text': text})
                 save_db(db)
                 preview = text if len(text) <= 100 else text[:100] + '…'
-                sent_n, missing_n = notify_users(db, receivers, 'رسالة جديدة من المدير', preview)
-                flash_msg('تم إرسال الرسالة. وصل إشعار لـ %d، ولم يفعّل الإشعارات %d.' % (sent_n, missing_n))
-            else:
+                send_n, Missing_n = notify_users(db, استقبال, 'رسالة جديدة من المدير', معاينة)
+                flash_msg('تم إرسال الرسالة. وصل إشعار لـ %d، ولم يفعل الإشعارات %d.' % (sent_n, Missing_n))
+            آخر:
                 flash_msg('اختر مستلماً واكتب نص الرسالة.', ok=False)
-        return redirect(url_for('dashboard'))
+        أعد توجيه المستخدم إلى عنوان URL الخاص بلوحة التحكم.
 
     flash = session.pop('flash', None)
-    user_messages = [
+    رسائل_المستخدم = [
         m for m in db['messages'] if user in m['receivers'] or m['sender'] == user
     ]
-    schedules = [
+    الجداول = [
         ('upper', 'الصفوف العليا', db['schedule_upper']),
-        ('lower', 'الصفوف الدنيا', db['schedule_lower']),
+        ('سفلي'، 'الصفوف الدنيا'، db['schedule_lower'])،
     ]
     return render_template_string(
         DASHBOARD_HTML,
         css=BASE_CSS, user=user, role=role, real_name=real_name, days=DAYS, locations=LOCATIONS,
         schedule_upper=db['schedule_upper'], schedule_lower=db['schedule_lower'],
         schedules=schedules, users=db['users'], teacher_list=TEACHER_LIST,
+        recv_groups=[(lbl, [n for n in names if n != user and n in db['users']]) for lbl, names in LOGIN_GROUPS],
         user_messages=user_messages, flash=flash, vapid_public=get_vapid_keys(db)['public'],
     )
 
 
 def render_users(db, me_name, notice=None):
-    rows = []
+    صفوف = []
     for name, info in db['users'].items():
         rows.append({'name': name, 'role': info.get('role', ''), 'waiting': bool(info.get('must_change'))})
     waiting = sum(1 for r in rows if r['waiting'])
     flash = session.pop('flash', None)
     return render_template_string(
-        USERS_HTML, css=BASE_CSS, user=me_name, role='مدير', me_name=me_name,
-        rows=rows, waiting=waiting, notice=notice, flash=flash,
+        USERS_HTML, css=BASE_CSS, user=me_name, role=' ' ', me_name=me_name,
+        صفوف=صفوف، انتظار=انتظار، إشعار=إشعار، وميض=وميض،
     )
 
 
 @app.route('/admin/users')
 def admin_users():
     db, me, resp = require_admin()
-    if resp is not None:
-        return resp
+    إذا لم تكن قيمة الاستجابة None:
+        رد الفعل
     return render_users(db, session['user'])
 
 
 @app.route('/admin/reset', methods=['POST'])
 def admin_reset():
     db, me, resp = require_admin()
-    if resp is not None:
-        return resp
+    إذا لم تكن قيمة الاستجابة None:
+        رد الفعل
     target = (request.form.get('username') or '')[:100]
-    if target not in db['users'] or target == session['user']:
+    إذا لم يكن الهدف موجودًا في db['users'] أو كان الهدف يساوي session['user']:
         flash_msg('مستخدم غير صالح.', ok=False)
-        return redirect(url_for('admin_users'))
+        أعد توجيه المستخدم إلى عنوان URL الخاص بـ "admin_users".
     temp = new_temp_password()
     db['users'][target]['pass'] = generate_password_hash(temp)
     db['users'][target]['must_change'] = True
@@ -1663,11 +1715,11 @@ def admin_reset():
 
 
 @app.route('/logout')
-def logout():
+دالة تسجيل الخروج():
     session.clear()
     resp = make_response(redirect(url_for('login')))
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-    return resp
+    رد الفعل
 
 
 init_db()
